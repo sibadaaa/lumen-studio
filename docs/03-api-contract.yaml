@@ -1,0 +1,1233 @@
+openapi: 3.1.0
+info:
+  title: LUMEN API
+  version: 0.3.0
+  description: >
+    LUMEN 流明 AI 影像工作台的内部 BFF 契约（生成工具）。浏览器只访问同源 /api/v1，
+    Provider 密钥、轮询、存储与视频合成均在服务端完成。
+    工作区 / 项目 / Agent 会话接口见施工图 §10.6，待 Agent Runtime 确定后补齐。
+servers:
+  - url: http://127.0.0.1:8787/api/v1
+    description: 本地开发
+  - url: /api/v1
+    description: 同源生产
+tags:
+  - name: System
+  - name: Providers
+  - name: Uploads
+  - name: Generations
+  - name: Assets
+  - name: Projects
+  - name: Agent
+
+paths:
+  /projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: 工作区项目列表（含会话/素材/生成统计）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProjectWithStats" }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: 新建项目
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectInput" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectWithStats" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /projects/{projectId}:
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: 项目详情（含最近会话与素材）
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project, stats, sessions, assets]
+                properties:
+                  project: { $ref: "#/components/schemas/Project" }
+                  stats: { $ref: "#/components/schemas/ProjectStats" }
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/AgentSession" }
+                  assets:
+                    type: array
+                    items: { $ref: "#/components/schemas/MediaAsset" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: 更新项目
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                description: { type: string, maxLength: 240 }
+                coverUrl: { type: string }
+                status: { type: string, enum: [active, archived] }
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectWithStats" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: 删除项目（素材/会话/任务的项目关联置空，不删文件）
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "204": { description: 已删除 }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /agent/sessions:
+    get:
+      tags: [Agent]
+      operationId: listAgentSessions
+      summary: 会话列表
+      parameters:
+        - name: projectId
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          description: 标题搜索
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AgentSession" }
+    post:
+      tags: [Agent]
+      operationId: createAgentSession
+      summary: 新建会话
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectId: { type: string }
+                title: { type: string, maxLength: 120 }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentSession" }
+
+  /agent/sessions/{sessionId}:
+    get:
+      tags: [Agent]
+      operationId: getAgentSession
+      summary: 会话详情与全部消息
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, messages]
+                properties:
+                  session: { $ref: "#/components/schemas/AgentSession" }
+                  messages:
+                    type: array
+                    items: { $ref: "#/components/schemas/AgentMessage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Agent]
+      operationId: updateAgentSession
+      summary: 重命名 / 移动会话
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, maxLength: 120 }
+                projectId: { type: string }
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentSession" }
+    delete:
+      tags: [Agent]
+      operationId: deleteAgentSession
+      summary: 删除会话与消息
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "204": { description: 已删除 }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /agent/sessions/{sessionId}/messages:
+    post:
+      tags: [Agent]
+      operationId: sendAgentMessage
+      summary: 发送任务消息并启动 Agent 执行
+      description: >
+        立即返回 202。Agent 在后台解析意图、生成计划、调用工具（workspace.inspect /
+        storyboard.plan / media.generate / ffmpeg.compose），把结果写回会话消息；
+        进度通过 /events 推送。同一会话同时只允许一个执行。
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        "202":
+          description: 已开始执行
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, message, runId]
+                properties:
+                  session: { $ref: "#/components/schemas/AgentSession" }
+                  message: { $ref: "#/components/schemas/AgentMessage" }
+                  runId: { type: string }
+        "409":
+          description: 会话正在执行
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /agent/sessions/{sessionId}/cancel:
+    post:
+      tags: [Agent]
+      operationId: cancelAgentRun
+      summary: 取消当前执行（同时取消底层生成任务）
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  canceled: { type: boolean }
+                  session: { $ref: "#/components/schemas/AgentSession" }
+
+  /agent/sessions/{sessionId}/events:
+    get:
+      tags: [Agent]
+      operationId: streamAgentEvents
+      summary: Agent 执行事件 SSE
+      description: >
+        事件 `agent` 的 data 为 AgentEvent：snapshot / status / plan / tool / progress /
+        message / tokens / done / error。连接在收到 done 后由服务端关闭。
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: 存活检查
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, version, time, ffmpeg]
+                properties:
+                  ok: { type: boolean, const: true }
+                  version: { type: string, example: "0.2.0" }
+                  time: { type: string, format: date-time }
+                  ffmpeg: { type: boolean }
+
+  /system:
+    get:
+      tags: [System]
+      operationId: getSystem
+      summary: BFF、队列、FFmpeg 与数据目录状态
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, version, time, ffmpeg, dataDir, concurrency, activeProviderId]
+                properties:
+                  ok: { type: boolean, const: true }
+                  version: { type: string }
+                  time: { type: string, format: date-time }
+                  ffmpeg:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      version: { type: [string, "null"] }
+                  dataDir: { type: string }
+                  concurrency: { type: integer }
+                  activeProviderId: { type: [string, "null"] }
+                  database:
+                    type: object
+                    description: SQLite 统计
+                    additionalProperties: true
+                  jobs:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      queued: { type: integer }
+                      running: { type: integer }
+                      succeeded: { type: integer }
+                      failed: { type: integer }
+                  runner:
+                    type: object
+                    properties:
+                      active: { type: integer }
+                      concurrency: { type: integer }
+
+  /usage:
+    get:
+      tags: [System]
+      operationId: getUsage
+      summary: 本地工作区 token 汇总（无积分/余额）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [totalTokens, inputTokens, outputTokens, generations, succeeded, failed]
+                properties:
+                  totalTokens: { type: integer, minimum: 0 }
+                  inputTokens: { type: integer, minimum: 0 }
+                  outputTokens: { type: integer, minimum: 0 }
+                  generations: { type: integer, minimum: 0 }
+                  succeeded: { type: integer, minimum: 0 }
+                  failed: { type: integer, minimum: 0 }
+
+  /providers:
+    get:
+      tags: [Providers]
+      operationId: listProviders
+      summary: Provider 列表（密钥掩码）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Provider" }
+
+  /providers/{providerId}:
+    put:
+      tags: [Providers]
+      operationId: saveProvider
+      summary: 保存或更新 Provider 配置
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderConfigInput" }
+      responses:
+        "200":
+          description: 已保存
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /providers/{providerId}/test:
+    post:
+      tags: [Providers]
+      operationId: testProvider
+      summary: 连通性与能力探测
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: 测试结果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderTestResult" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+
+  /providers/{providerId}/activate:
+    post:
+      tags: [Providers]
+      operationId: activateProvider
+      summary: 切换当前用于生成任务的 Provider
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: 已切换
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "404":
+          description: Provider 未保存配置
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /models:
+    get:
+      tags: [Providers]
+      operationId: listModels
+      summary: 按模式查询可用模型
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/GenerationMode" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Model" }
+
+  /uploads:
+    post:
+      tags: [Uploads]
+      operationId: uploadAsset
+      summary: 上传图片素材
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                purpose:
+                  type: string
+                  enum: [reference, first_frame, last_frame, shot]
+      responses:
+        "201":
+          description: 已上传
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaAsset" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMedia" }
+
+  /assets/{assetId}:
+    delete:
+      tags: [Assets]
+      operationId: deleteAsset
+      summary: 删除素材
+      parameters:
+        - $ref: "#/components/parameters/AssetId"
+      responses:
+        "204":
+          description: 已删除
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /assets/{assetId}/content:
+    get:
+      tags: [Assets]
+      operationId: getAssetContent
+      summary: 读取资产内容（本地开发）；生产 302 到签名 URL
+      parameters:
+        - $ref: "#/components/parameters/AssetId"
+      responses:
+        "200":
+          description: 文件流
+          content:
+            image/*: {}
+            video/mp4: {}
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /generations:
+    post:
+      tags: [Generations]
+      operationId: createGeneration
+      summary: 创建生成任务
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: 建议与 clientRequestId 相同；重复请求返回原任务
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerationRequest" }
+      responses:
+        "202":
+          description: 已入队
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationTask" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: 幂等键冲突，返回已有任务
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationTask" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    get:
+      tags: [Generations]
+      operationId: listGenerations
+      summary: 作品库分页
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: mode
+          in: query
+          schema: { $ref: "#/components/schemas/GenerationMode" }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/TaskStatus" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/GenerationTask" }
+                  nextCursor: { type: [string, "null"] }
+
+  /generations/{generationId}:
+    get:
+      tags: [Generations]
+      operationId: getGeneration
+      summary: 查询任务
+      parameters:
+        - $ref: "#/components/parameters/GenerationId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationTask" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /generations/{generationId}/cancel:
+    post:
+      tags: [Generations]
+      operationId: cancelGeneration
+      summary: 取消任务
+      parameters:
+        - $ref: "#/components/parameters/GenerationId"
+      responses:
+        "200":
+          description: 已请求取消
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationTask" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 任务已是终态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /generations/{generationId}/retry:
+    post:
+      tags: [Generations]
+      operationId: retryGeneration
+      summary: 重试失败任务或指定分镜
+      parameters:
+        - $ref: "#/components/parameters/GenerationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shotOrders:
+                  type: array
+                  description: 为空时重试整个任务
+                  items: { type: integer, minimum: 0 }
+      responses:
+        "202":
+          description: 已重新入队
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GenerationTask" }
+        "409":
+          description: 当前状态不可重试
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /generations/{generationId}/events:
+    get:
+      tags: [Generations]
+      operationId: streamGenerationEvents
+      summary: 任务进度 SSE（已实现；UI 默认轮询）
+      parameters:
+        - $ref: "#/components/parameters/GenerationId"
+      responses:
+        "200":
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, example: proj_product }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, example: sess_2dbc12b36f64 }
+    ProviderId:
+      name: providerId
+      in: path
+      required: true
+      schema: { type: string, example: ark }
+    GenerationId:
+      name: generationId
+      in: path
+      required: true
+      schema: { type: string, example: gen_01J9Z8Q2 }
+    AssetId:
+      name: assetId
+      in: path
+      required: true
+      schema: { type: string, example: ast_01J9Z8Q2 }
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: 未认证
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: 不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    TooLarge:
+      description: 文件过大
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    UnsupportedMedia:
+      description: 不支持的媒体类型
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unprocessable:
+      description: 能力或模式不匹配
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    RateLimited:
+      description: 请求过多
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    UpstreamError:
+      description: Provider 错误
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    Project:
+      type: object
+      required: [id, name, description, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, example: proj_product }
+        name: { type: string }
+        description: { type: string }
+        coverUrl: { type: string }
+        status: { type: string, enum: [active, archived] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ProjectStats:
+      type: object
+      required: [sessions, assets, generations, tokens, lastActivityAt]
+      properties:
+        sessions: { type: integer, minimum: 0 }
+        assets: { type: integer, minimum: 0 }
+        generations: { type: integer, minimum: 0 }
+        tokens: { type: integer, minimum: 0 }
+        lastActivityAt: { type: [string, "null"], format: date-time }
+
+    ProjectWithStats:
+      allOf:
+        - { $ref: "#/components/schemas/Project" }
+        - type: object
+          required: [stats]
+          properties:
+            stats: { $ref: "#/components/schemas/ProjectStats" }
+
+    ProjectInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 240 }
+        coverUrl: { type: string }
+
+    AgentSession:
+      type: object
+      required: [id, title, status, tokens, messageCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, example: sess_2dbc12b36f64 }
+        projectId: { type: [string, "null"] }
+        title: { type: string }
+        status: { type: string, enum: [idle, running, failed] }
+        tokens: { type: integer, minimum: 0, description: 该会话累计 token }
+        messageCount: { type: integer, minimum: 0 }
+        lastMessage: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AgentPlanStep:
+      type: object
+      required: [id, label, status]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [pending, running, done, failed] }
+        note: { type: string }
+
+    AgentToolState:
+      type: object
+      required: [id, name, status, detail]
+      properties:
+        id: { type: string }
+        name:
+          type: string
+          enum: [workspace.inspect, storyboard.plan, intent.resolve, media.generate, ffmpeg.compose]
+        status: { type: string, enum: [pending, running, done, failed] }
+        detail: { type: string }
+        tokens: { type: integer, minimum: 0 }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+
+    AgentMessageData:
+      type: object
+      properties:
+        plan:
+          type: array
+          items: { $ref: "#/components/schemas/AgentPlanStep" }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/AgentToolState" }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              shot: { type: string }
+              motion: { type: string }
+              desc: { type: string }
+              dur: { type: number }
+        outputs:
+          type: array
+          items: { $ref: "#/components/schemas/MediaAsset" }
+        jobId: { type: string }
+        mode: { $ref: "#/components/schemas/GenerationMode" }
+        estimatedTokens: { type: integer, minimum: 0 }
+        tokens: { type: integer, minimum: 0 }
+        actions:
+          type: array
+          items: { type: string, enum: [open_storyboard, open_studio, open_api] }
+
+    AgentMessage:
+      type: object
+      required: [id, sessionId, seq, role, text, createdAt]
+      properties:
+        id: { type: string }
+        sessionId: { type: string }
+        seq: { type: integer }
+        role: { type: string, enum: [user, assistant] }
+        text: { type: string }
+        data: { $ref: "#/components/schemas/AgentMessageData" }
+        createdAt: { type: string, format: date-time }
+
+    AgentEvent:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [snapshot, status, plan, tool, progress, message, tokens, done, error] }
+      additionalProperties: true
+
+    GenerationMode:
+      type: string
+      enum:
+        - text-to-image
+        - text-to-video
+        - image-to-image
+        - image-to-video
+        - multi-image-to-video
+
+    TaskStatus:
+      type: string
+      enum:
+        - queued
+        - submitting
+        - running
+        - postprocessing
+        - succeeded
+        - failed
+        - canceled
+        - partial_failed
+
+    AssetRole:
+      type: string
+      enum: [reference, first_frame, last_frame, shot]
+
+    GenerationType:
+      type: string
+      enum: [single, storyboard]
+      description: 文生视频可为 single 或 storyboard；图组视频固定 storyboard
+
+    StoryboardRow:
+      type: object
+      required: [id, order, shotSize, motion, description, durationSec]
+      properties:
+        id: { type: string }
+        order: { type: integer, minimum: 0, maximum: 8 }
+        assetId: { type: string, description: 图组视频必填（与 imageUrl 二选一） }
+        imageUrl: { type: string, description: 同源分镜图片 URL 扩展字段 }
+        shotSize:
+          type: string
+          enum: [远景, 全景, 中景, 近景, 特写, 微距]
+        motion: { type: string, maxLength: 20 }
+        description: { type: string, maxLength: 240 }
+        audio: { type: string, maxLength: 80 }
+        durationSec: { type: number, minimum: 1, maximum: 8 }
+
+    TokenUsage:
+      type: object
+      required: [inputTokens, outputTokens, totalTokens, estimated, source]
+      properties:
+        inputTokens: { type: integer, minimum: 0 }
+        outputTokens: { type: integer, minimum: 0 }
+        totalTokens: { type: integer, minimum: 0 }
+        estimated: { type: boolean }
+        source: { type: string, enum: [provider, tokenizer, heuristic] }
+
+    MediaAsset:
+      type: object
+      required: [id, kind, mime, size, url, createdAt]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [image, video, audio] }
+        mime: { type: string, example: image/jpeg }
+        width: { type: integer }
+        height: { type: integer }
+        durationSec: { type: number }
+        size: { type: integer }
+        url: { type: string, format: uri-reference }
+        thumbnailUrl: { type: string, format: uri-reference }
+        createdAt: { type: string, format: date-time }
+
+    ProviderCapabilities:
+      type: object
+      required:
+        - textToImage
+        - imageToImage
+        - textToVideo
+        - imageToVideo
+        - multiImageToVideo
+      properties:
+        textToImage: { type: boolean }
+        imageToImage: { type: boolean }
+        textToVideo: { type: boolean }
+        imageToVideo: { type: boolean }
+        multiImageToVideo: { type: boolean }
+        firstLastFrame: { type: boolean }
+        audio: { type: boolean }
+        customResolution: { type: boolean }
+        bitrateControl: { type: boolean }
+        animationModes:
+          type: array
+          items: { type: string, enum: [live, "2d", "3d", stop] }
+        maxImageCount: { type: integer, minimum: 0, maximum: 16 }
+        maxDurationSec: { type: integer, minimum: 1, maximum: 120 }
+
+    Provider:
+      type: object
+      required: [id, kind, baseUrl, keyMasked, capabilities, configured, encrypted]
+      properties:
+        id: { type: string, example: ark }
+        kind: { type: string, enum: [ark, openai_compatible, mock] }
+        label: { type: string, example: 火山方舟 }
+        baseUrl: { type: string, format: uri }
+        keyMasked: { type: string, example: "ark-••••••8f2a" }
+        imageModel: { type: string }
+        videoModel: { type: string }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilities" }
+        configured: { type: boolean }
+        encrypted: { type: boolean, description: 密钥是否以 AES-256-GCM 密文落盘 }
+        lastTestedAt: { type: [string, "null"], format: date-time }
+        lastLatencyMs: { type: [integer, "null"] }
+        updatedAt: { type: [string, "null"], format: date-time }
+
+    ProviderConfigInput:
+      type: object
+      required: [kind, baseUrl, imageModel, videoModel]
+      properties:
+        kind: { type: string, enum: [ark, openai_compatible, mock] }
+        baseUrl: { type: string, minLength: 4, description: mock 使用 local://mock }
+        apiKey:
+          type: string
+          minLength: 8
+          description: 非 mock 首次配置必填；已配置后留空表示保持原密钥
+        imageModel: { type: string }
+        videoModel: { type: string }
+
+    ProviderTestResult:
+      type: object
+      required: [ok, latencyMs, capabilities]
+      properties:
+        ok: { type: boolean }
+        latencyMs: { type: integer, minimum: 0 }
+        message: { type: string }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilities" }
+        models:
+          type: array
+          description: /models 探测结果（若网关未开放该端点则为空）
+          items: { type: string }
+
+    Model:
+      type: object
+      required: [id, providerId, label, modes]
+      properties:
+        id: { type: string }
+        providerId: { type: string }
+        label: { type: string }
+        modes:
+          type: array
+          items: { $ref: "#/components/schemas/GenerationMode" }
+        maxResolution: { type: string, example: 4K }
+        maxDurationSec: { type: integer }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilities" }
+
+    GenerationParams:
+      type: object
+      properties:
+        aspectRatio:
+          type: string
+          enum: ["1:1", "4:3", "16:9", "9:16", "3:2"]
+          default: "16:9"
+        resolution:
+          type: string
+          enum: ["1K", "2K", "4K", "720p", "1080p", "custom"]
+          default: "2K"
+          description: custom 时必须同时提供 width/height
+        width:
+          type: integer
+          minimum: 512
+          maximum: 8192
+          description: 自定义宽度；视频上限 3840；建议偶数
+        height:
+          type: integer
+          minimum: 360
+          maximum: 8192
+          description: 自定义高度；视频上限 2160；建议偶数
+        bitrateKbps:
+          type: integer
+          minimum: 2000
+          maximum: 80000
+          description: 视频编码码率；仅影响编码质量，不影响生成与 token 预估
+        animationMode:
+          type: string
+          enum: [live, "2d", "3d", stop]
+          default: live
+          description: 仅 image-to-video；非 live 时按动画风格重绘
+        durationSec:
+          type: integer
+          enum: [5, 10, 15]
+        fps:
+          type: integer
+          enum: [24, 30]
+        seed:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+        negativePrompt:
+          type: string
+          maxLength: 300
+        strength:
+          type: number
+          minimum: 0
+          maximum: 1
+        motion:
+          type: string
+          enum: [slow_push_in, orbit_right, pull_back, handheld, static]
+        transition:
+          type: string
+          enum: [dissolve, push, fade_black, none]
+        shotDurationSec:
+          type: integer
+          minimum: 2
+          maximum: 8
+        composeMode:
+          type: string
+          enum: [ai_storyboard, quick_template]
+          default: ai_storyboard
+
+    GenerationInput:
+      type: object
+      required: [role, order]
+      properties:
+        assetId: { type: string, description: 上传素材 ID；与 url 二选一 }
+        url:
+          type: string
+          description: 已存在的同源媒体 URL（/media/... 或 /assets/...）；与 assetId 二选一
+        role: { $ref: "#/components/schemas/AssetRole" }
+        order: { type: integer, minimum: 0, maximum: 8 }
+
+    GenerationRequest:
+      type: object
+      required:
+        - clientRequestId
+        - mode
+        - generationType
+        - providerId
+        - modelId
+        - prompt
+        - params
+        - inputs
+      properties:
+        clientRequestId: { type: string, format: uuid }
+        mode: { $ref: "#/components/schemas/GenerationMode" }
+        generationType: { $ref: "#/components/schemas/GenerationType" }
+        providerId: { type: string }
+        modelId: { type: string }
+        prompt:
+          type: string
+          maxLength: 1000
+          description: 图组视频允许为空，使用模板提示词
+        params: { $ref: "#/components/schemas/GenerationParams" }
+        inputs:
+          type: array
+          maxItems: 9
+          items: { $ref: "#/components/schemas/GenerationInput" }
+        projectId: { type: string, description: 归属项目（可选） }
+        sessionId: { type: string, description: 归属 Agent 会话（可选） }
+        storyboard:
+          type: array
+          maxItems: 9
+          description: 分镜模式必填；图组视频 2–9 行
+          items: { $ref: "#/components/schemas/StoryboardRow" }
+      examples:
+        - textToImage:
+            value:
+              clientRequestId: 3d0f6e2a-7c1a-4f56-9b7e-e9b1e5b0f3a2
+              mode: text-to-video
+              generationType: storyboard
+              providerId: ark
+              modelId: seedance-1-0-pro-250528
+              prompt: 深空中的紫色星云缓慢旋转，黑色巨石从星尘中浮现
+              params:
+                aspectRatio: "16:9"
+                resolution: "1080p"
+                fps: 24
+              inputs: []
+              storyboard:
+                - id: sh_1
+                  order: 0
+                  shotSize: 远景
+                  motion: 缓慢推进
+                  description: 星云旋转，黑石浮现
+                  audio: 低频嗡鸣
+                  durationSec: 3
+                - id: sh_2
+                  order: 1
+                  shotSize: 特写
+                  motion: 环绕
+                  description: 黑石表面刻纹被星光照亮
+                  durationSec: 3
+
+    ShotState:
+      type: object
+      required: [order, status, progress]
+      properties:
+        order: { type: integer }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        assetId: { type: string }
+        error: { $ref: "#/components/schemas/GenerationError" }
+
+    GenerationError:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: { type: string, example: PROVIDER_AUTH_FAILED }
+        message: { type: string }
+        retryable: { type: boolean }
+        tokensUsed: { type: integer, minimum: 0, description: 失败前已产生的 token 消耗 }
+        traceId: { type: string }
+        details: { type: object, additionalProperties: true }
+
+    GenerationTask:
+      type: object
+      required:
+        - id
+        - mode
+        - status
+        - progress
+        - stage
+        - prompt
+        - params
+        - inputs
+        - outputs
+        - estimatedTokens
+        - createdAt
+      properties:
+        id: { type: string, example: gen_01J9Z8Q2 }
+        clientRequestId: { type: string, format: uuid }
+        mode: { $ref: "#/components/schemas/GenerationMode" }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        stage: { type: string, example: "正在生成第 2 / 4 镜" }
+        prompt: { type: string }
+        params: { $ref: "#/components/schemas/GenerationParams" }
+        inputs:
+          type: array
+          items: { $ref: "#/components/schemas/GenerationInput" }
+        outputs:
+          type: array
+          items: { $ref: "#/components/schemas/MediaAsset" }
+        shots:
+          type: array
+          items: { $ref: "#/components/schemas/ShotState" }
+        storyboard:
+          type: array
+          items: { $ref: "#/components/schemas/StoryboardRow" }
+        estimatedTokens: { type: integer, minimum: 0 }
+        usage:
+          oneOf:
+            - { $ref: "#/components/schemas/TokenUsage" }
+            - type: "null"
+        estimatedSeconds: { type: integer, minimum: 0 }
+        projectId: { type: string }
+        sessionId: { type: string }
+        error: { $ref: "#/components/schemas/GenerationError" }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, "null"], format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable, traceId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            retryable: { type: boolean }
+            tokensUsed: { type: integer, minimum: 0 }
+            traceId: { type: string }
+            details: { type: object, additionalProperties: true }
