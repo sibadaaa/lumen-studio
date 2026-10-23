@@ -48,6 +48,7 @@
   "WORK_ACTION_FAILED": "Work action failed",
   "WORK_SAVE_FAILED": "Failed to save as asset",
   "ASSET_NOT_FOUND": "Asset not found",
+  "ASSET_PROJECT_MISMATCH": "This asset belongs to another project. Move it to the current project first",
   "ASSET_IN_USE": "A running task is using this asset; delete it later",
   "ASSET_REFERENCED": "Asset is referenced by past works; confirm before deleting",
   "ASSET_TAG_LIMIT": "Up to 8 tags per asset",

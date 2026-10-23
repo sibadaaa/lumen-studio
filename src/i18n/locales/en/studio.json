@@ -205,7 +205,10 @@
     "refilledLast": "Last frame filled from the library",
     "refilledShot": "Storyboard frame filled from the library",
     "intentRefill": "Params refilled; review and hit generate",
-    "modelSwitched": "Model switched; incompatible params reset"
+    "modelSwitched": "Model switched; incompatible params reset",
+    "projectSwitched": "Project switched; the studio has been reset",
+    "foreignAsset": "This asset belongs to another project. Move it to the current project first",
+    "foreignWork": "This work belongs to another project; only prompt and params were restored"
   },
   "modesAria": "Generation modes",
   "viewAria": "Canvas view",

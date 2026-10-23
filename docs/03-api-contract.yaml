@@ -886,12 +886,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GenerationTask" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: 项目或输入素材不存在（code = PROJECT_NOT_FOUND | ASSET_NOT_FOUND）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "409":
           description: 幂等键冲突，返回已有任务
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GenerationTask" }
-        "422": { $ref: "#/components/responses/Unprocessable" }
+        "422":
+          description: >
+            参数或能力不匹配。请求带 projectId 时，inputs[].assetId 与 storyboard[].assetId
+            必须属于该项目，否则返回 code = ASSET_PROJECT_MISMATCH；projectId 为空的历史素材
+            仍允许使用。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "429": { $ref: "#/components/responses/RateLimited" }
     get:
       tags: [Generations]
@@ -1457,7 +1469,7 @@ components:
           type: array
           maxItems: 9
           items: { $ref: "#/components/schemas/GenerationInput" }
-        projectId: { type: string, description: 归属项目（可选） }
+        projectId: { type: string, description: 归属项目（可选）；提供时输入素材必须同属该项目 }
         sessionId: { type: string, description: 归属 Agent 会话（可选） }
         storyboard:
           type: array

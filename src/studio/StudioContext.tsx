@@ -70,6 +70,7 @@ const API_MODE: Record<Mode, GenerationMode> = {
 interface StudioContextValue {
   mode: Mode;
   view: View;
+  projectId?: string;
   prompt: string;
   negativePrompt: string;
   seed: string;
@@ -229,6 +230,9 @@ export function StudioProvider({
   const modeRef = useRef(mode);
   const runtimeRef = useRef(runtime);
   const projectIdRef = useRef(projectId);
+  const projectEpochRef = useRef(0);
+  const lastProjectRef = useRef(projectId);
+  const generatingRef = useRef(isGenerating);
   const modelOverridesRef = useRef(modelOverrides);
 
   useEffect(() => {
@@ -276,8 +280,57 @@ export function StudioProvider({
     runtimeRef.current = runtime;
   }, [runtime]);
   useEffect(() => {
+    generatingRef.current = isGenerating;
+  }, [isGenerating]);
+  useEffect(() => {
     projectIdRef.current = projectId;
-  }, [projectId]);
+    if (lastProjectRef.current === projectId) return;
+
+    // Project switched: invalidate in-flight uploads/generation callbacks and
+    // drop every piece of studio state that belongs to the previous project.
+    const wasGenerating = generatingRef.current;
+    lastProjectRef.current = projectId;
+    projectEpochRef.current += 1;
+    pollTokenRef.current += 1;
+    mockCancelRef.current = true;
+    if (pollTimerRef.current) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    uploadsRef.current.clear();
+    setAttachments((prev) => {
+      for (const item of prev) {
+        if (item.url.startsWith("blob:")) URL.revokeObjectURL(item.url);
+      }
+      return [];
+    });
+    attachmentsRef.current = [];
+    setBoards((prev) => {
+      const next = { ...prev };
+      (Object.keys(next) as Array<keyof typeof next>).forEach((boardMode) => {
+        next[boardMode] = {
+          ...next[boardMode],
+          rows: next[boardMode].rows.map((row) => ({ ...row, img: null, assetId: undefined, uploading: false })),
+        };
+      });
+      boardsRef.current = next;
+      return next;
+    });
+    setHistory([]);
+    setActiveHistory("");
+    setLastOutput(null);
+    setActiveJobId(null);
+    setGenerationError(null);
+    setIsGenerating(false);
+    setProgress(0);
+    setIsPlaying(false);
+    setVideoProgress(0);
+    if (wasGenerating) toast(i18n.t("toasts.projectSwitched", { ns: "studio" }));
+  }, [projectId, toast]);
   useEffect(() => {
     return () => {
       pollTokenRef.current += 1;
@@ -487,6 +540,7 @@ export function StudioProvider({
   const addAttachment = (file: File) => {
     const id = `a-${++attachmentSeq}`;
     const url = URL.createObjectURL(file);
+    const epoch = projectEpochRef.current;
     setAttachments((prev) => {
       const next = [...prev, { id, url, name: file.name, uploading: true, progress: 0 }];
       attachmentsRef.current = next;
@@ -495,11 +549,13 @@ export function StudioProvider({
     const upload = api
       .upload(file, (progress) => patchAttachment(id, { progress }), projectIdRef.current)
       .then((asset) => {
+        if (epoch !== projectEpochRef.current) return null;
         patchAttachment(id, { assetId: asset.id, uploading: false, progress: 100, url: asset.thumbnailUrl || asset.url });
         toast(i18n.t("composer.uploadOk", { ns: "studio" }), "success");
         return asset.url;
       })
       .catch((error: Error) => {
+        if (epoch !== projectEpochRef.current) return null;
         patchAttachment(id, { uploading: false, progress: 0 });
         toast(i18n.t("composer.uploadFail", { ns: "studio", message: error.message }), "default");
         return null;
@@ -551,6 +607,9 @@ export function StudioProvider({
 
   /** Apply a cross-page intent (from the works or assets library) once. */
   const applyIntent = (incoming: StudioIntent) => {
+    const currentProject = projectIdRef.current;
+    const fromOtherProject = (owner?: string) => Boolean(owner && currentProject && owner !== currentProject);
+
     if (incoming.work) {
       const work = incoming.work;
       const nextMode = MODE_BY_CONTRACT[work.mode] || "t2i";
@@ -565,6 +624,13 @@ export function StudioProvider({
       }
       if (work.params.strength !== undefined) setStrengthState(Math.round(work.params.strength * 100));
       if (work.modelId) setModelOverrides((prev) => ({ ...prev, [nextMode]: work.modelId }));
+      if (fromOtherProject(work.projectId)) {
+        // Cross-project work: restore prompt/params only, never its assets.
+        setAttachments([]);
+        attachmentsRef.current = [];
+        toast(i18n.t("toasts.foreignWork", { ns: "studio" }));
+        return;
+      }
       const restored = work.inputs
         .filter((input) => input.assetId || (input.url && input.url.startsWith("/media/")))
         .map((input) => ({
@@ -579,6 +645,10 @@ export function StudioProvider({
       attachmentsRef.current = restored;
       toast(i18n.t("toasts.intentRefill", { ns: "studio" }), "success");
     } else if (incoming.asset) {
+      if (fromOtherProject(incoming.asset.projectId)) {
+        toast(i18n.t("toasts.foreignAsset", { ns: "studio" }));
+        return;
+      }
       attachAsset(incoming.asset, incoming.role || "reference");
     }
   };
@@ -601,6 +671,7 @@ export function StudioProvider({
     if (currentMode !== "t2v" && currentMode !== "multi") return;
     const boardMode = currentMode as "t2v" | "multi";
     const localUrl = URL.createObjectURL(file);
+    const epoch = projectEpochRef.current;
     setBoards((prev) => {
       const next = {
         ...prev,
@@ -616,6 +687,7 @@ export function StudioProvider({
     const task = api
       .upload(file, undefined, projectIdRef.current)
       .then((asset) => {
+        if (epoch !== projectEpochRef.current) return null;
         setBoards((prev) => {
           const next = {
             ...prev,
@@ -633,6 +705,7 @@ export function StudioProvider({
         return asset.url;
       })
       .catch((error: Error) => {
+        if (epoch !== projectEpochRef.current) return null;
         setBoards((prev) => {
           const next = {
             ...prev,
@@ -676,9 +749,15 @@ export function StudioProvider({
     setGenStage(stages[0]);
     const started = performance.now();
     const total = currentMode === "multi" || wasBoard ? 4200 : 3000;
+    const epoch = projectEpochRef.current;
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = window.setInterval(() => {
       if (mockCancelRef.current) return;
+      if (epoch !== projectEpochRef.current) {
+        if (timerRef.current) window.clearInterval(timerRef.current);
+        timerRef.current = null;
+        return;
+      }
       const elapsed = performance.now() - started;
       const next = Math.min(99, Math.round((elapsed / total) * 100));
       const stageIndex = Math.min(stages.length - 1, Math.floor((next / 100) * stages.length));
@@ -690,6 +769,7 @@ export function StudioProvider({
         setProgress(100);
         setGenStage("生成完成");
         window.setTimeout(() => {
+          if (epoch !== projectEpochRef.current) return;
           setIsGenerating(false);
           onTokensUsed(tokens);
           if (wasBoard) {
@@ -715,11 +795,12 @@ export function StudioProvider({
 
   const pollGeneration = async (jobId: string, currentMode: Mode) => {
     const token = ++pollTokenRef.current;
+    const epoch = projectEpochRef.current;
     let failures = 0;
     let handled = false;
-    while (!handled && token === pollTokenRef.current) {
+    while (!handled && token === pollTokenRef.current && epoch === projectEpochRef.current) {
       await sleep(900);
-      if (token !== pollTokenRef.current) return;
+      if (token !== pollTokenRef.current || epoch !== projectEpochRef.current) return;
       let task: GenerationTask;
       try {
         task = await api.getGeneration(jobId);
@@ -734,6 +815,7 @@ export function StudioProvider({
         }
         continue;
       }
+      if (token !== pollTokenRef.current || epoch !== projectEpochRef.current) return;
       setProgress(task.progress);
       setGenStage(task.stage);
       if (task.status === "succeeded") {
@@ -875,6 +957,7 @@ export function StudioProvider({
       toast("先写一句提示词，再开始生成");
       return;
     }
+    const epoch = projectEpochRef.current;
     const tokens = estimatedTokens;
     const wasBoard = isBoard;
     const label = ctaLabel;
@@ -899,6 +982,7 @@ export function StudioProvider({
       setIsGenerating(false);
       return;
     }
+    if (epoch !== projectEpochRef.current) return;
     const request = buildRequest(currentMode);
     if (!request) {
       setIsGenerating(false);
@@ -907,6 +991,7 @@ export function StudioProvider({
     setGenStage("正在提交任务到本机 BFF");
     try {
       const task = await api.createGeneration(request);
+      if (epoch !== projectEpochRef.current) return;
       setActiveJobId(task.id);
       setGenStage(task.stage);
       setProgress(task.progress);
@@ -932,6 +1017,7 @@ export function StudioProvider({
       }
       await pollGeneration(task.id, currentMode);
     } catch (error) {
+      if (epoch !== projectEpochRef.current) return;
       setIsGenerating(false);
       setActiveJobId(null);
       const message = (error as Error).message;
@@ -990,6 +1076,7 @@ export function StudioProvider({
   const value: StudioContextValue = {
     mode,
     view,
+    projectId,
     prompt: prompts[mode],
     negativePrompt,
     seed,

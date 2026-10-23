@@ -205,7 +205,10 @@
     "refilledLast": "已从素材库填入尾帧",
     "refilledShot": "已填入分镜画面",
     "intentRefill": "已回填作品参数，确认后点击生成",
-    "modelSwitched": "已切换模型，已重置不兼容参数"
+    "modelSwitched": "已切换模型，已重置不兼容参数",
+    "projectSwitched": "项目已切换，创作台已重置",
+    "foreignAsset": "该素材属于其他项目，请先在素材库移动到当前项目",
+    "foreignWork": "该作品属于其他项目，仅恢复提示词与参数，素材未载入"
   },
   "modesAria": "生成模式",
   "viewAria": "画布视图",

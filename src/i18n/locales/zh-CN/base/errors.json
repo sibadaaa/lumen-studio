@@ -48,6 +48,7 @@
   "WORK_ACTION_FAILED": "作品操作失败",
   "WORK_SAVE_FAILED": "另存为素材失败",
   "ASSET_NOT_FOUND": "素材不存在",
+  "ASSET_PROJECT_MISMATCH": "素材属于其他项目，请先移动到当前项目",
   "ASSET_IN_USE": "有任务正在使用该素材，完成后再删除",
   "ASSET_REFERENCED": "该素材被历史作品引用，确认后再删除",
   "ASSET_TAG_LIMIT": "最多添加 8 个标签",

@@ -101,6 +101,7 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
       </div>
       <AssetPickerDialog
         open={pickerOpen}
+        projectId={studio.projectId}
         onClose={() => setPickerOpen(false)}
         onPick={(asset) => studio.attachAsset(asset, pickerRole)}
       />

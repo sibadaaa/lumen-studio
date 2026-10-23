@@ -33,6 +33,7 @@ import { PROVIDER_CAPABILITIES } from "../shared/contracts.js";
 import { config, ensureDataDirs, paths } from "./config.js";
 import { providerStore } from "./storage/providers.js";
 import { assetStore } from "./storage/assets.js";
+import { findAssetOwnershipIssue } from "./storage/asset-guard.js";
 import { assetUsageStore } from "./storage/asset-usage.js";
 import { modelStore, inferModelKind, modesFor, capabilitiesFor } from "./storage/models.js";
 import { workStore } from "./storage/works.js";
@@ -1025,6 +1026,17 @@ api.post("/generations", async (c) => {
 
   if (request.projectId && !projectStore.get(request.projectId)) {
     throw new ApiError(404, "PROJECT_NOT_FOUND", "项目不存在");
+  }
+  const assetIssue = findAssetOwnershipIssue(request.projectId, [
+    ...request.inputs.map((input) => input.assetId),
+    ...(request.storyboard || []).map((row) => row.assetId),
+  ]);
+  if (assetIssue) {
+    throw new ApiError(
+      assetIssue.code === "ASSET_NOT_FOUND" ? 404 : 422,
+      assetIssue.code,
+      assetIssue.message
+    );
   }
   if (request.sessionId && !agentStore.get(request.sessionId)) {
     throw new ApiError(404, "SESSION_NOT_FOUND", "会话不存在");

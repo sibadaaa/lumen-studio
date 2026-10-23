@@ -22,12 +22,23 @@ export function AssetPickerDialog({ open, onClose, onPick, projectId }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    let active = true;
+    setItems([]);
     setLoading(true);
     api
       .assets(buildQuery({ projectId: projectId || undefined, q: search || undefined, limit: 30 }))
-      .then((page) => setItems(page.items))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+      .then((page) => {
+        if (active) setItems(page.items);
+      })
+      .catch(() => {
+        if (active) setItems([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [open, search, projectId]);
 
   useEffect(() => {
@@ -63,6 +74,7 @@ export function AssetPickerDialog({ open, onClose, onPick, projectId }: Props) {
             aria-label={t("searchPlaceholder")}
           />
         </div>
+        {projectId && <p className="asset-picker-scope">{t("picker.scope")}</p>}
         <div className="asset-picker-grid">
           {loading && <p className="library-loading">{t("picker.loading")}</p>}
           {!loading && grid.length === 0 && <p className="library-loading">{t("picker.empty")}</p>}

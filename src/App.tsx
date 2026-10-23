@@ -254,6 +254,8 @@ export default function App() {
                 setProjectId(project.id);
                 setProjectName(project.name);
                 setAgentSessionId(null);
+                setLibraryProjectId(null);
+                setStudioIntent(null);
                 setPage("project");
               }}
               toast={toast}

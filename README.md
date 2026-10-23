@@ -252,6 +252,7 @@ server/                      Hono BFF
 | 模型获取 / 作品库 / 素材库施工图 | [docs/05-model-works-assets-blueprint.md](./docs/05-model-works-assets-blueprint.md) |
 | i18n 与全局主题设计稿 | [docs/06-i18n-theme-design.md](./docs/06-i18n-theme-design.md) |
 | i18n 与全局主题施工图 | [docs/07-i18n-theme-blueprint.md](./docs/07-i18n-theme-blueprint.md) |
+| 主题可读性与创作台素材隔离修复方案 | [docs/08-theme-studio-asset-fix.md](./docs/08-theme-studio-asset-fix.md) |
 | API 契约（OpenAPI 3.1） | [docs/03-api-contract.yaml](./docs/03-api-contract.yaml) |
 | 设计稿截图 | [design/screenshots/](./design/screenshots/) |
 

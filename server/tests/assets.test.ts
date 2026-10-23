@@ -96,6 +96,14 @@ test("assets: addWithMeta, tags, search and soft delete", async () => {
   const usage = assetUsageStore.listForAsset("ast_a");
   assert.equal(usage[0].role, "reference");
 
+  // cross-project guard used by POST /generations
+  const { findAssetOwnershipIssue } = await import("../storage/asset-guard.js");
+  assert.equal(findAssetOwnershipIssue(undefined, ["ast_a"]), null); // no project => drafts stay allowed
+  assert.equal(findAssetOwnershipIssue("proj_a", ["ast_a"]), null);
+  assert.equal(findAssetOwnershipIssue("proj_b", ["ast_a"])?.code, "ASSET_PROJECT_MISMATCH");
+  assert.equal(findAssetOwnershipIssue("proj_b", ["ast_b"]), null); // unarchived asset is accepted
+  assert.equal(findAssetOwnershipIssue("proj_a", ["ast_missing"])?.code, "ASSET_NOT_FOUND");
+
   // soft delete hides from lists but keeps the row
   assert.equal(assetStore.softDelete("ast_c"), true);
   assert.equal(assetStore.get("ast_c"), null);
