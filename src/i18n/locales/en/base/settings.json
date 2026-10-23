@@ -1,0 +1,12 @@
+{
+  "appearance": "Appearance",
+  "theme": "Theme",
+  "themeSystem": "Follow system",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "themeSystemHint": "Light by day, dark at night",
+  "language": "Language / 语言",
+  "storedLocally": "Preferences are stored in this browser only.",
+  "themeAria": "Appearance: {{value}}, click to switch",
+  "settingsTitle": "Preferences"
+}

@@ -8,7 +8,9 @@ import {
   Plug,
 } from "lucide-react";
 import { ApiModal } from "./components/ApiModal";
+import { SettingsMenu } from "./components/SettingsMenu";
 import { ToastViewport, type ToastItem } from "./components/Toast";
+import { useTranslation } from "react-i18next";
 import type { ModelInfo, ModelRoute } from "../shared/contracts";
 import { AgentWorkspace } from "./pages/AgentWorkspace";
 import { AssetsLibrary } from "./pages/AssetsLibrary";
@@ -21,16 +23,6 @@ import { WorkspaceHome } from "./pages/WorkspaceHome";
 import { api } from "./lib/api";
 import { compactTokens, formatTokens } from "./lib/tokens";
 import type { Page, StudioIntent, StudioRuntime } from "./types";
-
-const PAGE_LABELS: Record<Page, string> = {
-  workspace: "工作区",
-  project: "项目",
-  studio: "创作台",
-  agent: "Agent 工作区",
-  works: "作品库",
-  assets: "素材库",
-  models: "API 与模型",
-};
 
 const OFFLINE_RUNTIME: StudioRuntime = {
   online: false,
@@ -45,6 +37,7 @@ const OFFLINE_RUNTIME: StudioRuntime = {
 };
 
 export default function App() {
+  const { t } = useTranslation("base");
   const [page, setPage] = useState<Page>("workspace");
   const [projectId, setProjectId] = useState("proj_product");
   const [projectName, setProjectName] = useState("产品短片");
@@ -126,29 +119,35 @@ export default function App() {
   }, [page, apiOpen]);
 
   const jump = useMemo(() => {
-    if (page === "project") return { label: "工作区", target: "workspace" as Page };
-    if (page === "studio") return { label: "项目", target: "project" as Page };
-    if (page === "agent") return { label: "创作台", target: "studio" as Page };
-    if (page === "works" || page === "assets" || page === "models") return { label: "工作区", target: "workspace" as Page };
+    if (page === "project") return { label: t("workspace"), target: "workspace" as Page };
+    if (page === "studio") return { label: t("project"), target: "project" as Page };
+    if (page === "agent") return { label: t("studio"), target: "studio" as Page };
+    if (page === "works" || page === "assets" || page === "models")
+      return { label: t("workspace"), target: "workspace" as Page };
     return null;
-  }, [page]);
+  }, [page, t]);
 
+  const pageLabel = (target: Page) =>
+    target === "works" ? t("works") : target === "assets" ? t("assets") : target === "models" ? t("models") : t("workspace");
   const crumbs = useMemo(() => {
-    const items: { label: string; page?: Page }[] = [{ label: "工作区", page: page === "workspace" ? undefined : "workspace" }];
-    if (page === "workspace") items.push({ label: "全部项目" });
+    const items: { label: string; page?: Page }[] = [
+      { label: t("workspace"), page: page === "workspace" ? undefined : "workspace" },
+    ];
+    if (page === "workspace") items.push({ label: t("allProjects") });
     if (page === "project") items.push({ label: projectName });
-    if (page === "studio") items.push({ label: projectName, page: "project" }, { label: "创作台" });
+    if (page === "studio")
+      items.push({ label: projectName, page: "project" }, { label: t("studio") });
     if (page === "agent")
       items.push(
         { label: projectName, page: "project" },
-        { label: "创作台", page: "studio" },
-        { label: "Agent 工作区" }
+        { label: t("studio"), page: "studio" },
+        { label: t("agent") }
       );
-    if (page === "works") items.push({ label: "作品库" });
-    if (page === "assets") items.push({ label: "素材库" });
-    if (page === "models") items.push({ label: "API 与模型" });
+    if (page === "works") items.push({ label: t("works") });
+    if (page === "assets") items.push({ label: t("assets") });
+    if (page === "models") items.push({ label: t("models") });
     return items;
-  }, [page, projectName]);
+  }, [page, projectName, t]);
 
   const goPage = (target: Page) => setPage(target);
 
@@ -166,18 +165,18 @@ export default function App() {
             </svg>
           </button>
 
-          <nav className="rail-nav" aria-label="主导航">
+          <nav className="rail-nav" aria-label={t("mainNav")}>
             {([
-              ["workspace", "工作区", LayoutDashboard],
-              ["works", "作品库", LayoutGrid],
-              ["assets", "素材库", FolderOpen],
-              ["models", "API 与模型", Plug],
+              ["workspace", t("workspace"), LayoutDashboard],
+              ["works", t("works"), LayoutGrid],
+              ["assets", t("assets"), FolderOpen],
+              ["models", t("models"), Plug],
             ] as const).map(([target, label, Icon]) => (
               <button
                 key={target}
                 className={`rail-item ${page === target ? "is-active" : ""}`}
-                data-tip={label}
-                aria-label={label}
+                data-tip={pageLabel(target)}
+                aria-label={pageLabel(target)}
                 aria-current={page === target ? "page" : undefined}
                 onClick={() => goPage(target)}
               >
@@ -188,7 +187,7 @@ export default function App() {
           </nav>
 
           <div className="rail-bottom">
-            <button className="rail-item" data-tip="快捷键" aria-label="快捷键" onClick={() => toast("1–5 切换模式 · ⌘↵ 生成 · ⌘J 打开 Agent 工作区")}>
+            <button className="rail-item" data-tip={t("shortcuts")} aria-label={t("shortcuts")} onClick={() => toast(t("shortcutsToast"))}>
               <Keyboard size={21} strokeWidth={1.4} />
             </button>
           </div>
@@ -200,7 +199,7 @@ export default function App() {
               <span className="wordmark">LUMEN</span>
               <span className="wordmark-cn">流明</span>
               <span className="crumb-sep">/</span>
-              <nav className="breadcrumbs" aria-label="工作区路径">
+              <nav className="breadcrumbs" aria-label={t("breadcrumb")}>
                 {crumbs.map((crumb, index) => (
                   <span key={`${crumb.label}-${index}`} style={{ display: "contents" }}>
                     {index > 0 && <span className="crumb-sep">/</span>}
@@ -214,18 +213,18 @@ export default function App() {
                   </span>
                 ))}
               </nav>
-              <span className="autosave"><i />已保存</span>
+              <span className="autosave"><i />{t("autosave")}</span>
             </div>
             <div className="topbar-right">
-              <button className={`api-pill ${runtime.online ? "is-online" : ""}`} onClick={() => goPage("models")} aria-haspopup="dialog" title="打开 API 与模型">
+              <button className={`api-pill ${runtime.online ? "is-online" : ""}`} onClick={() => goPage("models")} aria-haspopup="dialog" title={t("models")}>
                 <span className="live-dot" />
-                <span>{runtime.online ? (runtime.provider?.kind === "mock" ? "本地演示" : runtime.provider?.label || "未配置 Provider") : "Mock 生成"}</span>
+                <span>{runtime.online ? (runtime.provider?.kind === "mock" ? (runtime.provider?.label || t("workspace")) : runtime.provider?.label || t("models")) : t("mockFallback")}</span>
                 <span className="pill-divider" />
                 <span className="api-provider">
                   {!runtime.online ? "OFFLINE" : runtime.provider?.kind === "mock" ? "MOCK" : runtime.provider?.configured ? "LIVE" : "SETUP"}
                 </span>
               </button>
-              <button className="token-chip" title={`本会话 ${formatTokens(sessionTokens)} tokens · 本地会话累计`}>
+              <button className="token-chip" title={t("tokenTitle", { count: formatTokens(sessionTokens) })}>
                 <svg className="token-ring" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                   <circle cx="9" cy="9" r="6.4" stroke="currentColor" strokeWidth="1.1" opacity=".22" />
                   <path d="M9 2.6a6.4 6.4 0 0 1 6.2 4.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -234,7 +233,7 @@ export default function App() {
                 <span className="token-value">{compactTokens(sessionTokens)}</span>
                 <span className="token-unit">tokens</span>
               </button>
-              <span className="local-badge" title="本地工作区 · 无需登录"><i />LOCAL</span>
+              <span className="local-badge" title={t("localTitle")}><i />LOCAL</span>
               <button
                 className="page-jump"
                 hidden={!jump}
@@ -242,7 +241,8 @@ export default function App() {
               >
                 {jump?.label}
               </button>
-              <button className="icon-btn" title="帮助" aria-label="帮助" onClick={() => toast("帮助文档即将接入")}>
+              <SettingsMenu />
+              <button className="icon-btn" title={t("help")} aria-label={t("help")} onClick={() => toast(t("helpToast"))}>
                 <HelpCircle size={18} strokeWidth={1.4} />
               </button>
             </div>

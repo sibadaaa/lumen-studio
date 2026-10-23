@@ -1,0 +1,12 @@
+{
+  "appearance": "外观",
+  "theme": "主题",
+  "themeSystem": "跟随系统",
+  "themeLight": "浅色",
+  "themeDark": "深色",
+  "themeSystemHint": "白天浅色，夜间深色",
+  "language": "语言 / Language",
+  "storedLocally": "偏好保存在本机浏览器 · 不上传",
+  "themeAria": "外观：{{value}}，点击切换",
+  "settingsTitle": "偏好设置"
+}

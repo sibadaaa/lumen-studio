@@ -1,17 +1,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Star, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-export const relativeTime = (iso: string | null | undefined) => {
-  if (!iso) return "—";
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return new Date(iso).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-};
-
-export const compactBytes = (bytes: number) =>
-  bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+export { relativeTime, formatBytes as compactBytes } from "../i18n/format";
 
 export const formatClock = (seconds?: number) => {
   if (!seconds || seconds <= 0) return null;
@@ -118,9 +109,10 @@ export function MediaCard({
   onToggleFavorite?: () => void;
   onToggleSelect?: () => void;
 }) {
+  const { t } = useTranslation("base");
   return (
     <article className={`media-card ${selected ? "is-selected" : ""}`}>
-      <button className="media-card-thumb" onClick={onOpen} aria-label={`打开 ${title}`}>
+      <button className="media-card-thumb" onClick={onOpen} aria-label={t("openDetail", { title })}>
         <img src={thumbnailUrl || url} alt={title} loading="lazy" decoding="async" />
         {kind === "video" && (
           <span className="media-card-duration">
@@ -136,7 +128,7 @@ export function MediaCard({
             <button
               className={`media-card-select ${selected ? "is-active" : ""}`}
               aria-pressed={selected}
-              aria-label={selected ? "取消选择" : "选择"}
+              aria-label={selected ? t("unselect") : t("toggleSelect")}
               onClick={onToggleSelect}
             >
               {selected ? "✓" : ""}
@@ -146,7 +138,7 @@ export function MediaCard({
             <button
               className={`media-card-fav ${favorite ? "is-active" : ""}`}
               aria-pressed={favorite}
-              aria-label={favorite ? "取消收藏" : "收藏"}
+              aria-label={favorite ? t("unfavoriteAria") : t("toggleFavorite")}
               onClick={onToggleFavorite}
             >
               <Star size={13} strokeWidth={1.6} />
@@ -176,6 +168,7 @@ export function DetailDrawer({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
+  const { t } = useTranslation("base");
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -192,7 +185,7 @@ export function DetailDrawer({
     <aside ref={ref} className={`library-drawer ${wide ? "is-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
       <header className="library-drawer-head">
         <strong>{title}</strong>
-        <button className="library-drawer-close" onClick={onClose} aria-label="关闭详情">
+        <button className="library-drawer-close" onClick={onClose} aria-label={t("close")}>
           <X size={14} />
         </button>
       </header>

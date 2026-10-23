@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FolderOpen, Plus, SlidersHorizontal, Wand2 } from "lucide-react";
 import { MODES } from "../data/mock";
 import { formatTokens } from "../lib/tokens";
@@ -8,12 +9,14 @@ import { useStudio } from "./StudioContext";
 
 export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => void }) {
   const studio = useStudio();
+  const { t } = useTranslation("studio");
+  const { t: tBase } = useTranslation("base");
   const fileRef = useRef<HTMLInputElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const config = MODES[studio.mode];
   const eta = studio.isBoardView
-    ? studio.mode === "multi" ? "约 3–4 分钟" : "约 90 秒"
-    : config.eta;
+    ? t(studio.mode === "multi" ? "boardEta.multi" : "boardEta.t2v")
+    : t(`eta.${studio.mode}`);
   const pickerRole: AssetRole = studio.mode === "i2v" ? "first_frame" : studio.mode === "multi" ? "shot" : "reference";
 
   const enhance = () => {
@@ -25,14 +28,14 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
   };
 
   return (
-    <section className="composer" aria-label="提示词">
+    <section className="composer" aria-label={t("composer.label")}>
       <div className="composer-head">
         <label className="prompt-label" htmlFor="prompt">
-          <span className="prompt-spark">✦</span> 提示词 <span className="lang-tag">中文</span>
+          <span className="prompt-spark">✦</span> {t("composer.label")} <span className="lang-tag">{t("composer.langTag")}</span>
         </label>
         <div className="composer-tools">
           <button className="text-tool" onClick={enhance}>
-            <Wand2 size={12} strokeWidth={1.4} /> 智能优化
+            <Wand2 size={12} strokeWidth={1.4} /> {t("composer.enhance")}
           </button>
           <span className="char-count">{studio.prompt.length} / 1000</span>
         </div>
@@ -43,7 +46,7 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
         maxLength={1000}
         value={studio.prompt}
         spellCheck={false}
-        placeholder="描述你想生成的画面…"
+        placeholder={t("composer.placeholder")}
         onChange={(event) => studio.setPrompt(event.target.value)}
       />
       <div className="composer-foot">
@@ -51,10 +54,10 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
           {config.attach && (
             <>
               <button className="attach-btn" onClick={() => fileRef.current?.click()}>
-                <Plus size={13} /> {config.attachLabel}
+                <Plus size={13} /> {t(`composer.attach.${studio.mode}`)}
               </button>
               <button className="attach-btn is-ghost" onClick={() => setPickerOpen(true)}>
-                <FolderOpen size={13} /> 素材库
+                <FolderOpen size={13} /> {t("composer.fromLibrary")}
               </button>
             </>
           )}
@@ -75,11 +78,11 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
                 <img src={attachment.url} alt={attachment.name} />
                 {attachment.uploading && <span className="attachment-progress">{attachment.progress || 0}%</span>}
                 {attachment.assetId && <span className="attachment-ok">✓</span>}
-                <button type="button" aria-label="移除图片" onClick={() => studio.removeAttachment(attachment.id)}>×</button>
+                <button type="button" aria-label={tBase("delete")} onClick={() => studio.removeAttachment(attachment.id)}>×</button>
               </div>
             ))}
           </div>
-          <span className="kbd-hint">按 <kbd>⌘</kbd><kbd>↵</kbd> 快速生成</span>
+          <span className="kbd-hint">{t("composer.kbd")}</span>
         </div>
         <div className="estimate-inline">
           <span className="estimate-dot" />
@@ -91,9 +94,9 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
         </div>
         <div className="mobile-actions">
           <button className="mobile-params" onClick={onOpenInspector} aria-controls="inspector">
-            <SlidersHorizontal size={14} /> 参数
+            <SlidersHorizontal size={14} /> {t("inspector.title")}
           </button>
-          <button className="mobile-generate" onClick={studio.generate}>生成</button>
+          <button className="mobile-generate" onClick={studio.generate}>{t("cta.generate")}</button>
         </div>
       </div>
       <AssetPickerDialog

@@ -48,6 +48,7 @@ import type {
   View,
 } from "../types";
 import { MODE_BY_CONTRACT } from "../types";
+import { i18n } from "../i18n";
 
 interface Attachment {
   id: string;
@@ -208,7 +209,7 @@ export function StudioProvider({
   const [boards, setBoards] = useState(DEFAULT_BOARDS);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [genStage, setGenStage] = useState("正在解析画面意图");
+  const [genStage, setGenStage] = useState(() => i18n.t("genStage.prepare", { ns: "studio" }));
   const [history, setHistory] = useState<HistoryItem[]>(INITIAL_HISTORY);
   const [activeHistory, setActiveHistory] = useState("h1");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -495,12 +496,12 @@ export function StudioProvider({
       .upload(file, (progress) => patchAttachment(id, { progress }), projectIdRef.current)
       .then((asset) => {
         patchAttachment(id, { assetId: asset.id, uploading: false, progress: 100, url: asset.thumbnailUrl || asset.url });
-        toast("素材已上传至本机 BFF", "success");
+        toast(i18n.t("composer.uploadOk", { ns: "studio" }), "success");
         return asset.url;
       })
       .catch((error: Error) => {
         patchAttachment(id, { uploading: false, progress: 0 });
-        toast(`${error.message}，已保留本地预览`, "default");
+        toast(i18n.t("composer.uploadFail", { ns: "studio", message: error.message }), "default");
         return null;
       });
     uploadsRef.current.set(id, upload);
@@ -533,7 +534,7 @@ export function StudioProvider({
           },
         };
       });
-      toast("已填入分镜画面", "success");
+      toast(i18n.t("toasts.refilledShot", { ns: "studio" }), "success");
       return;
     }
     setAttachments((prev) => {
@@ -544,8 +545,8 @@ export function StudioProvider({
       attachmentsRef.current = next;
       return next;
     });
-    const label = role === "first_frame" ? "首帧" : role === "last_frame" ? "尾帧" : "参考图";
-    toast(`已从素材库填入${label}`, "success");
+    const key = role === "first_frame" ? "refilledFirst" : role === "last_frame" ? "refilledLast" : "refilledRef";
+    toast(i18n.t(`toasts.${key}`, { ns: "studio" }), "success");
   };
 
   /** Apply a cross-page intent (from the works or assets library) once. */
@@ -576,7 +577,7 @@ export function StudioProvider({
         }));
       setAttachments(restored);
       attachmentsRef.current = restored;
-      toast("已回填作品参数，确认后点击生成", "success");
+      toast(i18n.t("toasts.intentRefill", { ns: "studio" }), "success");
     } else if (incoming.asset) {
       attachAsset(incoming.asset, incoming.role || "reference");
     }
@@ -780,7 +781,7 @@ export function StudioProvider({
     if (activeMode === "t2v" || activeMode === "multi") {
       const rows = boardsRef.current[activeMode].rows;
       if (rows.some((row) => row.uploading || (row.img?.startsWith("blob:") && !row.assetId))) {
-        toast("分镜画面仍在上传，请稍后重试");
+        toast(i18n.t("toasts.boardUploading", { ns: "studio" }));
         return false;
       }
     }
@@ -793,11 +794,11 @@ export function StudioProvider({
       currentMode === "multi" || (currentMode === "t2v" && currentView === "storyboard");
     const usable = attachmentsRef.current.filter((item) => item.assetId || item.url.startsWith("/media/"));
     if (currentMode === "i2i" && usable.length === 0) {
-      toast("图生图需要先上传一张参考图");
+      toast(i18n.t("toasts.needRef", { ns: "studio" }));
       return null;
     }
     if (currentMode === "i2v" && usable.length === 0 && !boardsRef.current.multi.rows[0]?.assetId) {
-      toast("图生视频需要先上传一张首帧");
+      toast(i18n.t("toasts.needFirst", { ns: "studio" }));
       return null;
     }
     const provider = runtimeRef.current.provider;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Bot,
   Clapperboard,
@@ -31,6 +32,7 @@ interface Props {
 
 export function StudioPage({ hidden, onOpenAgent, toast }: Props) {
   const studio = useStudio();
+  const { t } = useTranslation("studio");
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export function StudioPage({ hidden, onOpenAgent, toast }: Props) {
       <section className="center">
         <div className="modebar">
           <div className="modebar-main">
-            <div className="mode-tabs" role="tablist" aria-label="生成模式">
+            <div className="mode-tabs" role="tablist" aria-label={t("modesAria")}>
               {(Object.keys(MODES) as Mode[]).map((mode) => {
                 const Icon = MODE_ICONS[mode];
                 return (
@@ -73,25 +75,25 @@ export function StudioPage({ hidden, onOpenAgent, toast }: Props) {
                     onClick={() => studio.switchMode(mode)}
                   >
                     <Icon size={16} strokeWidth={1.4} />
-                    <span>{["文生图", "文生视频", "图生图", "图生视频", "图组视频"][["t2i", "t2v", "i2i", "i2v", "multi"].indexOf(mode)]}</span>
+                    <span>{t(`modes.${mode}`)}</span>
                   </button>
                 );
               })}
             </div>
-            <div className="view-switch" hidden={!studio.isVideo || (studio.mode !== "t2v" && studio.mode !== "multi")} role="group" aria-label="画布视图">
-              <button className={studio.view === "preview" ? "is-active" : ""} onClick={() => studio.switchView("preview")}>成片</button>
-              <button className={studio.view === "storyboard" ? "is-active" : ""} onClick={() => studio.switchView("storyboard")}>分镜表</button>
+            <div className="view-switch" hidden={!studio.isVideo || (studio.mode !== "t2v" && studio.mode !== "multi")} role="group" aria-label={t("viewAria")}>
+              <button className={studio.view === "preview" ? "is-active" : ""} onClick={() => studio.switchView("preview")}>{t("view.preview")}</button>
+              <button className={studio.view === "storyboard" ? "is-active" : ""} onClick={() => studio.switchView("storyboard")}>{t("view.storyboard")}</button>
             </div>
             <button className="agent-entry" onClick={onOpenAgent}>
               <Bot size={13} strokeWidth={1.4} />
-              Agent 工作区
+              {t("agentEntry")}
               <kbd>⌘J</kbd>
             </button>
           </div>
           <div className="modebar-end">
-            <span className="draft-state"><i />参数已保存</span>
-            <button className="shortcut-hint" onClick={() => toast("按 1–5 切换模式，⌘/Ctrl + Enter 生成")}>
-              <kbd>1</kbd><span>–</span><kbd>5</kbd><span>切换</span>
+            <span className="draft-state"><i />{t("draftSaved")}</span>
+            <button className="shortcut-hint" onClick={() => toast(t("shortcutHint"))}>
+              <kbd>1</kbd><span>–</span><kbd>5</kbd><span>{t("switch")}</span>
             </button>
           </div>
         </div>

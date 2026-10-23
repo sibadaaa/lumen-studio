@@ -1,0 +1,21 @@
+{
+  "workspace": "Workspace",
+  "works": "Works",
+  "assets": "Assets",
+  "models": "API & Models",
+  "project": "Project",
+  "studio": "Studio",
+  "agent": "Agent Workspace",
+  "allProjects": "All projects",
+  "autosave": "Saved",
+  "help": "Help",
+  "helpToast": "Help docs are coming soon",
+  "shortcutsToast": "1–5 switch modes · ⌘↵ generate · ⌘J open Agent workspace",
+  "tokenTitle": "Session total {{count}} tokens · local session counter",
+  "localTitle": "Local workspace · no sign-in",
+  "tokensUnit": "tokens",
+  "mockFallback": "Mock mode",
+  "mainNav": "Primary navigation",
+  "shortcuts": "Shortcuts",
+  "breadcrumb": "Workspace path"
+}

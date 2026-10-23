@@ -1,0 +1,82 @@
+{
+  "title": "Assets",
+  "desc": "Upload, organize and reuse references and first frames; save finished works here from the Works library.",
+  "stats": "{{count}} assets",
+  "statsUnused": "{{count}} unused",
+  "upload": "Upload assets",
+  "refreshAria": "Refresh assets",
+  "searchPlaceholder": "Search names & tags…",
+  "filterProject": "Filter by project",
+  "filterKind": "Filter by type",
+  "filterSource": "Filter by source",
+  "filterTag": "Filter by tag",
+  "sort": {
+    "newest": "Newest",
+    "oldest": "Oldest",
+    "size": "Largest",
+    "name": "Name"
+  },
+  "kind": {
+    "all": "All types",
+    "image": "Images",
+    "video": "Videos"
+  },
+  "source": {
+    "all": "All sources",
+    "upload": "Upload",
+    "work": "From works",
+    "agent": "Agent"
+  },
+  "tagAll": "All tags",
+  "tagWithCount": "{{tag}} ({{count}})",
+  "unused": "Unused",
+  "dropzone": "Drop images here to upload · PNG / JPEG / WebP · ≤ 20MB each",
+  "onlyImages": "Only PNG / JPEG / WebP images are supported",
+  "duplicate": "“{{name}}” already exists in the library; this upload was kept",
+  "added": "Added {{count}} assets",
+  "emptyFilteredTitle": "No assets match these filters",
+  "emptyFilteredBody": "Adjust the filters or clear them to see everything.",
+  "emptyTitle": "No assets yet",
+  "emptyBody": "Upload your first asset, or save a finished work here from the Works library.",
+  "loadMore": "Load more ({{count}} total)",
+  "errorRead": "Could not load assets: {{message}}",
+  "uploadDone": "Done",
+  "uploadFailed": "Failed",
+  "drawer": {
+    "title": "Asset details",
+    "useInStudio": "Use in studio",
+    "file": "File",
+    "project": "Project",
+    "source": "Source",
+    "usage": "References",
+    "usedBy": "Used by {{count}} tasks",
+    "unused": "Not used yet",
+    "uploadedAt": "Uploaded",
+    "tags": "Tags ({{count}}/8)",
+    "addTag": "Add",
+    "tagPlaceholder": "Add a tag",
+    "removeTagAria": "Remove tag {{tag}}",
+    "usageTitle": "Used by these tasks",
+    "delete": "Delete asset",
+    "deleteConfirm": "Delete “{{name}}”? Referenced thumbnails in past works will break.",
+    "deleted": "Asset deleted",
+    "deleteNote": "Deletes are soft; files are cleaned by the retention policy and in-use assets are protected.",
+    "spec": "Specs"
+  },
+  "bulk": {
+    "movePlaceholder": "Move to project…",
+    "addTags": "Add tag",
+    "addTagsPrompt": "Tag to add",
+    "delete": "Delete",
+    "deleteConfirm": "Delete {{count}} selected assets? In-use ones are skipped.",
+    "done": "Updated {{count}} assets",
+    "partial": "{{updated}} ok · {{failed}} failed: {{message}}"
+  },
+  "sortLabel": "Sort",
+  "picker": {
+    "title": "Pick from library",
+    "desc": "Choose an asset to fill the current mode; no re-upload.",
+    "empty": "No assets available yet.",
+    "loading": "Loading assets…"
+  }
+}

@@ -1,13 +1,15 @@
 import { ArrowRight, Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useStudio } from "./StudioContext";
 
 export function HistoryStrip({ toast }: { toast: (message: string, type?: "default" | "success") => void }) {
   const studio = useStudio();
+  const { t } = useTranslation("studio");
   return (
-    <section className="history" aria-label="最近生成">
+    <section className="history" aria-label={t("historyLabel")}>
       <div className="history-head">
-        <span>本次会话 <em>{studio.history.length}</em></span>
-        <button className="text-btn" onClick={() => toast("全部作品将在下一阶段接入")}>全部作品 <ArrowRight size={12} /></button>
+        <span>{t("history.session")} <em>{studio.history.length}</em></span>
+        <button className="text-btn" onClick={() => toast(t("history.allWorksToast"))}>{t("history.allWorks")} <ArrowRight size={12} /></button>
       </div>
       <div className="history-row">
         {studio.history.map((item) => (
@@ -24,8 +26,8 @@ export function HistoryStrip({ toast }: { toast: (message: string, type?: "defau
             )}
           </button>
         ))}
-        <button className="history-new" onClick={() => toast("已新建空白创作")}>
-          <Plus size={15} /><span>新建创作</span>
+        <button className="history-new" onClick={() => toast(t("history.newToast"))}>
+          <Plus size={15} /><span>{t("history.new")}</span>
         </button>
       </div>
     </section>

@@ -2,7 +2,7 @@
 
 一个支持 API 的 React 文生图 / 文生视频 / 图生图 / 图生视频 / 图组视频工作台。
 
-> **当前阶段：M4 · 模型获取 / 作品库 / 素材库已落地。**  
+> **当前阶段：M5 · i18n（zh-CN/en）与全局主题（浅色/深色/跟随系统）已落地。**  
 > 工作区 → 项目 → 创作台 → Agent 工作区、五种生成模式、自定义规格、动画模式、分镜表、token 计量均已实现；BFF 已接入 **Provider Adapter、加密密钥、素材上传、SQLite 持久化队列与轮询、FFmpeg 合成**，并提供 **项目 / 会话持久化与可执行的本地 Agent**（解析意图 → 计划 → 调用工具 → 真实生成 → 回写结果）。本地演示 Provider 可在无 Key 的情况下跑通完整链路。左侧导航的**作品库、素材库、API 与模型（模型目录 + 路由）**均为可用页面。
 
 ## 运行
@@ -265,7 +265,7 @@ server/                      Hono BFF
 - 视频统一输出 H.264 MP4（无音轨）；生成音频的 Provider 结果当前在合成时丢弃音轨，后续可补 AAC 混流。
 - Agent 是**本地确定性编排器**，不调用 LLM；接入真实模型（DSH 会话协议或 Provider LLM）是下一步。
 - 模型获取、作品库、素材库已按 [04](./docs/04-model-works-assets-design.md) / [05](./docs/05-model-works-assets-blueprint.md) 落地：模型目录与路由、作品快照与历史回填、素材标签/引用/作品转素材均可用。
-- i18n（zh-CN/en）与浅色/深色全局主题的**设计与施工图已给出**（[06](./docs/06-i18n-theme-design.md) / [07](./docs/07-i18n-theme-blueprint.md)），待实施；项目重命名、会话删除 UI 也仍待接入（API 已具备）。
+- i18n 与全局主题已按 [06](./docs/06-i18n-theme-design.md) / [07](./docs/07-i18n-theme-blueprint.md) 落地：`react-i18next` + `locales/<lang>/{base,页面}` 结构、偏好弹层（顶栏）、防闪烁内联脚本、浅色主题令牌重映射、媒体区保持深色；项目重命名、会话删除 UI 仍待接入（API 已具备）。
 - 作品/素材删除为软删除；文件按 `MEDIA_RETENTION_DAYS` 保留策略清理（清理任务 P1）。
 - 未实现账号/多用户/配额；本地单用户，访问控制依赖本机与反向代理。
 - 生产化需要：Postgres/SQLite、对象存储、短时签名 URL、审计日志、Docker 镜像与 CI。

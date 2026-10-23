@@ -298,7 +298,7 @@ src/i18n/
     │   ├── index.ts     # 聚合本语言命名空间
     │   ├── base/{common,nav,errors,settings}.json
     │   ├── workspace/page.json   project/page.json
-    │   ├── studio/{composer,inspector,stage,history,storyboard}.json
+    │   ├── studio.json            # 单命名空间，内部按 composer/inspector/… 分组
     │   ├── agent/page.json       api/page.json
     │   └── models/page.json      works/page.json   assets/page.json
     └── en/              # 与 zh-CN 目录一一对应
@@ -323,7 +323,7 @@ export const zhCN = {
   models: modelsPage,
   works: worksPage,
   assets: assetsPage,
-  // 多文件页面：二级命名空间（useTranslation("studio.composer")）
+  // studio 使用单一命名空间，内部按区块分组（useTranslation("studio") + t("composer.label")）
   studio: { composer, inspector, stage, history, storyboard },
 };
 ```

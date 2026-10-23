@@ -1,0 +1,66 @@
+{
+  "title": "Connect API",
+  "desc": "Keys are written to the local BFF only, stored with AES-256-GCM; the browser never sees them.",
+  "tabs": {
+    "ark": "Volcengine Ark",
+    "openai": "OpenAI-compatible",
+    "custom": "Custom gateway",
+    "mock": "Local demo",
+    "tagRecommend": "Pick",
+    "tagOffline": "Offline"
+  },
+  "banner": {
+    "offlineTitle": "Local BFF offline · Mock fallback",
+    "offlineBody": "Run npm run dev:server and refresh to enable real uploads and the task queue",
+    "mockTitle": "Local demo engine on · FFmpeg compose",
+    "mockBody": "No external calls; validates the full pipeline with local assets and FFmpeg",
+    "configuredTitle": "Encrypted key saved · awaiting handshake",
+    "configuredBody": "Mask {{mask}} · server-side only · file mode 0600",
+    "setupTitle": "Waiting for a provider"
+  },
+  "meta": {
+    "bff": "BFF {{version}}",
+    "bffOffline": "BFF offline",
+    "ffmpegOk": "FFmpeg ready",
+    "ffmpegMissing": "FFmpeg missing",
+    "configured": "Configured",
+    "unconfigured": "Not configured"
+  },
+  "form": {
+    "baseUrl": "Base URL",
+    "key": "API Key",
+    "keySaved": "Encrypted; leave blank to keep",
+    "keyPlaceholder": "Provider API key",
+    "keyKeep": "{{mask}} · leave blank to keep",
+    "keyNote": "Only a mask comes back from the server; drafts never touch localStorage.",
+    "imageModel": "Image model",
+    "videoModel": "Video model",
+    "show": "Show",
+    "hide": "Hide"
+  },
+  "errKey": "An API key is required on first save",
+  "errUrl": "Base URL must start with http:// or https://",
+  "caps": {
+    "label": "Capabilities",
+    "t2i": "Text-to-image",
+    "i2i": "Image-to-image",
+    "t2v": "Text-to-video",
+    "i2v": "Image-to-video",
+    "multi": "Multi-image",
+    "ffmpeg": "FFmpeg compose"
+  },
+  "note": "Keys are derived with scrypt and encrypted with AES-256-GCM as v1:iv:tag:ciphertext; APIs and logs only return masks. The local demo never touches the network. If exposed, add reverse-proxy access control and set APP_SECRET.",
+  "footer": {
+    "test": "Save & test",
+    "testing": "Handshaking…",
+    "wait": "Awaiting test",
+    "save": "Save config",
+    "saving": "Saving…"
+  },
+  "toasts": {
+    "mockOn": "Local demo engine enabled",
+    "saved": "API config saved encrypted",
+    "ok": "Connected; capabilities synced",
+    "notSaved": "Config not saved; cannot test"
+  }
+}

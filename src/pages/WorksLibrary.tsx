@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Download, LoaderCircle, Plus, RefreshCw, Sparkles } from "lucide-react";
 import type { GenerationMode, ProjectWithStats, Work } from "../../shared/contracts";
 import { MODE_LABELS } from "../../shared/contracts";
@@ -16,6 +17,7 @@ import {
   compactBytes,
   relativeTime,
 } from "../library/ui";
+import { formatDateTime } from "../i18n/format";
 import type { StudioIntent } from "../types";
 
 interface Props {
@@ -33,6 +35,8 @@ const MODE_OPTIONS: GenerationMode[] = [
 ];
 
 export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
+  const { t } = useTranslation("works");
+  const { t: tBase } = useTranslation("base");
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [projectFilter, setProjectFilter] = useState<string>(projectId || "");
   const [searchInput, setSearchInput] = useState("");
@@ -76,10 +80,10 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
 
   const list = useCursorQuery<Work>(fetcher, [fetcher]);
 
-  const projectName = useMemo(() => {
-    const map = new Map(projects.map((project) => [project.id, project.name]));
-    return (id?: string | null) => (id ? map.get(id) || id : "未归档");
-  }, [projects]);
+  const projectName = useMemo(
+    () => (id?: string | null) => (id ? projects.find((project) => project.id === id)?.name || id : tBase("unfiled")),
+    [projects, tBase]
+  );
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -113,7 +117,7 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
       patchLocal(work.id, { title: updated.title });
       setActive(updated);
       setRenaming("");
-      toast("已重命名", "success");
+      toast(t("drawer.renamed"), "success");
     } catch (error) {
       toast((error as Error).message);
     }
@@ -124,19 +128,19 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
       const updated = await api.updateWork(work.id, { projectId: target });
       patchLocal(work.id, { projectId: updated.projectId });
       setActive(updated);
-      toast("已移动项目", "success");
+      toast(t("drawer.moved"), "success");
     } catch (error) {
       toast((error as Error).message);
     }
   };
 
   const remove = async (work: Work) => {
-    if (!window.confirm(`删除作品「${work.title}」？任务记录与 tokens 统计仍会保留。`)) return;
+    if (!window.confirm(t("drawer.deleteConfirm", { title: work.title }))) return;
     try {
       await api.deleteWork(work.id);
       list.setItems((prev) => prev.filter((item) => item.id !== work.id));
       setActive(null);
-      toast("作品已删除", "success");
+      toast(t("drawer.deleted"), "success");
     } catch (error) {
       toast((error as Error).message);
     }
@@ -146,7 +150,7 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
     setBusy(true);
     try {
       const result = await api.saveWorkToAssets(work.id);
-      toast(result.created ? "已加入素材库" : "该作品已经在素材库中", "success");
+      toast(result.created ? t("drawer.savedToAssets") : t("drawer.alreadySaved"), "success");
     } catch (error) {
       toast((error as Error).message);
     } finally {
@@ -160,14 +164,14 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
   ) => {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (action === "delete" && !window.confirm(`删除选中的 ${ids.length} 件作品？此操作不可撤销。`)) return;
+    if (action === "delete" && !window.confirm(t("bulk.deleteConfirm", { count: ids.length }))) return;
     setBusy(true);
     try {
       const result = await api.bulkWorks({ action, ids, projectId: target });
       if (result.failed.length > 0) {
-        toast(`成功 ${result.updated} · 失败 ${result.failed.length}：${result.failed[0].message}`);
+        toast(t("bulk.partial", { updated: result.updated, failed: result.failed.length, message: result.failed[0].message }));
       } else {
-        toast(action === "save_to_assets" ? `已加入素材库 ${result.created || 0} 件` : `已更新 ${result.updated} 件`, "success");
+        toast(action === "save_to_assets" ? t("bulk.saved", { count: result.created || 0 }) : t("bulk.done", { count: result.updated }), "success");
       }
       setSelected(new Set());
       await list.refresh();
@@ -187,17 +191,17 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
   return (
     <LibraryShell
       eyebrow="WORKS"
-      title="作品库"
-      description="成功生成的结果，按时间倒序；失败与取消的任务不会进入作品库。"
+      title={t("title")}
+      description={t("desc")}
       stats={
         <>
-          <span>{list.total} 件作品</span>
-          {!list.loading && <span className="library-stats-sub">{compactTokens(list.items.reduce((sum, item) => sum + item.usage.totalTokens, 0))} tokens（当前页）</span>}
+          <span>{t("stats", { count: list.total })}</span>
+          {!list.loading && <span className="library-stats-sub">{t("statsTokens", { count: compactTokens(list.items.reduce((sum, item) => sum + item.usage.totalTokens, 0)) })}</span>}
         </>
       }
       actions={
-        <button className="soft-btn" onClick={() => void list.refresh()} aria-label="刷新作品列表">
-          <RefreshCw size={13} /> 刷新
+        <button className="soft-btn" onClick={() => void list.refresh()} aria-label={tBase("refresh")}>
+          <RefreshCw size={13} /> {tBase("refresh")}
         </button>
       }
       toolbar={
@@ -206,35 +210,35 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
             className="library-search"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="搜索标题、提示词…"
-            aria-label="搜索作品"
+            placeholder={t("searchPlaceholder")}
+            aria-label={t("searchPlaceholder")}
           />
-          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} aria-label="按项目筛选">
-            <option value="">全部项目</option>
-            <option value="none">未归档</option>
+          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} aria-label={t("filterProject")}>
+            <option value="">{tBase("all")}</option>
+            <option value="none">{tBase("unfiled")}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>{project.name}</option>
             ))}
           </select>
-          <select value={kind} onChange={(event) => setKind(event.target.value as "" | "image" | "video")} aria-label="按类型筛选">
-            <option value="">全部类型</option>
-            <option value="image">图片</option>
-            <option value="video">视频</option>
+          <select value={kind} onChange={(event) => setKind(event.target.value as "" | "image" | "video")} aria-label={t("filterKind")}>
+            <option value="">{t("kind.all")}</option>
+            <option value="image">{t("kind.image")}</option>
+            <option value="video">{t("kind.video")}</option>
           </select>
-          <select value={mode} onChange={(event) => setMode(event.target.value as "" | GenerationMode)} aria-label="按模式筛选">
-            <option value="">全部模式</option>
+          <select value={mode} onChange={(event) => setMode(event.target.value as "" | GenerationMode)} aria-label={t("filterMode")}>
+            <option value="">{t("modeAll")}</option>
             {MODE_OPTIONS.map((item) => (
               <option key={item} value={item}>{MODE_LABELS[item]}</option>
             ))}
           </select>
           <button className={`library-chip ${favorite ? "is-active" : ""}`} aria-pressed={favorite} onClick={() => setFavorite((prev) => !prev)}>
-            仅看收藏
+            {t("favorite")}
           </button>
-          <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} aria-label="排序">
-            <option value="newest">最新</option>
-            <option value="oldest">最早</option>
-            <option value="tokens">tokens 高→低</option>
-            <option value="duration">时长长→短</option>
+          <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} aria-label={t("sortLabel")}>
+            <option value="newest">{t("sort.newest")}</option>
+            <option value="oldest">{t("sort.oldest")}</option>
+            <option value="tokens">{t("sort.tokens")}</option>
+            <option value="duration">{t("sort.duration")}</option>
           </select>
           {hasFilters && (
             <button
@@ -247,24 +251,20 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
                 setSearchInput("");
               }}
             >
-              清除筛选
+              {tBase("clearFilters")}
             </button>
           )}
         </div>
       }
     >
-      {list.error && <ErrorBanner message={`无法读取作品库：${list.error}`} onRetry={() => void list.refresh()} />}
+      {list.error && <ErrorBanner message={t("errorRead", { message: list.error })} onRetry={() => void list.refresh()} />}
 
       {list.loading ? (
         <SkeletonGrid />
       ) : list.items.length === 0 ? (
         <EmptyState
-          title={hasFilters ? "没有符合条件的作品" : "还没有作品"}
-          description={
-            hasFilters
-              ? "调整筛选条件，或清除筛选查看全部作品。"
-              : "去创作台生成第一张图或第一段视频，成功后会自动出现在这里。"
-          }
+          title={hasFilters ? t("emptyFilteredTitle") : t("emptyTitle")}
+          description={hasFilters ? t("emptyFilteredBody") : t("emptyBody")}
         />
       ) : (
         <>
@@ -299,14 +299,14 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
           </div>
           {list.nextCursor && (
             <button className="library-more" onClick={() => void list.loadMore()} disabled={list.loadingMore}>
-              {list.loadingMore ? <><LoaderCircle size={13} className="spin" /> 加载中…</> : <><Plus size={13} /> 加载更多（共 {list.total} 件）</>}
+              {list.loadingMore ? <><LoaderCircle size={13} className="spin" /> {tBase("loadingMore")}</> : <><Plus size={13} /> {t("loadMore", { count: list.total })}</>}
             </button>
           )}
           {selected.size > 0 && (
-            <SelectionBar label={`已选 ${selected.size} 件`}>
-              <button disabled={busy} onClick={() => void bulk("favorite")}>收藏</button>
-              <button disabled={busy} onClick={() => void bulk("unfavorite")}>取消收藏</button>
-              <button disabled={busy} onClick={() => void bulk("save_to_assets")}>另存为素材</button>
+            <SelectionBar label={tBase("selected", { count: selected.size })}>
+              <button disabled={busy} onClick={() => void bulk("favorite")}>{tBase("favorite")}</button>
+              <button disabled={busy} onClick={() => void bulk("unfavorite")}>{tBase("unfavorite")}</button>
+              <button disabled={busy} onClick={() => void bulk("save_to_assets")}>{t("bulk.save")}</button>
               <select
                 defaultValue=""
                 disabled={busy}
@@ -317,20 +317,20 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
                   void bulk("move_project", target);
                 }}
               >
-                <option value="" disabled>移动到项目…</option>
-                <option value="none">未归档</option>
+                <option value="" disabled>{t("bulk.movePlaceholder")}</option>
+                <option value="none">{tBase("unfiled")}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.name}</option>
                 ))}
               </select>
-              <button className="is-danger" disabled={busy} onClick={() => void bulk("delete")}>删除</button>
-              <button className="text-btn" onClick={() => setSelected(new Set())}>取消</button>
+              <button className="is-danger" disabled={busy} onClick={() => void bulk("delete")}>{tBase("delete")}</button>
+              <button className="text-btn" onClick={() => setSelected(new Set())}>{tBase("cancel")}</button>
             </SelectionBar>
           )}
         </>
       )}
 
-      <DetailDrawer open={Boolean(active)} onClose={() => setActive(null)} title="作品详情" wide>
+      <DetailDrawer open={Boolean(active)} onClose={() => setActive(null)} title={t("drawer.title")} wide>
         {active && (
           <>
             <div className="library-preview">
@@ -342,29 +342,29 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
             </div>
             <div className="library-actions-row">
               <a className="soft-btn" href={active.url} download={`${active.title || active.id}`}>
-                <Download size={13} /> 下载
+                <Download size={13} /> {tBase("download")}
               </a>
               <button className="ws-primary" onClick={() => reuse(active)}>
-                <Sparkles size={13} /> 复用参数
+                <Sparkles size={13} /> {t("drawer.reuse")}
               </button>
-              <button className="soft-btn" onClick={() => reuse(active, true)}>生成变体</button>
-              <button className="soft-btn" disabled={busy} onClick={() => void saveToAssets(active)}>另存为素材</button>
+              <button className="soft-btn" onClick={() => reuse(active, true)}>{t("drawer.variant")}</button>
+              <button className="soft-btn" disabled={busy} onClick={() => void saveToAssets(active)}>{t("drawer.saveToAssets")}</button>
             </div>
             <dl className="library-detail-list">
-              <div><dt>模型</dt><dd>{active.providerId} · {active.modelId}</dd></div>
-              <div><dt>规格</dt><dd>{active.params.resolution || "—"} · {active.params.aspectRatio || "—"}{active.durationSec ? ` · ${Math.round(active.durationSec)}s` : ""}</dd></div>
-              <div><dt>消耗</dt><dd>{active.usage.totalTokens.toLocaleString()} tokens{active.usage.estimated ? "（估算）" : "（Provider 实际）"}</dd></div>
-              <div><dt>项目</dt><dd>{projectName(active.projectId)}</dd></div>
-              <div><dt>来源</dt><dd>{active.source === "agent" ? "Agent 工作区" : "创作台"} · {active.generationId}</dd></div>
-              <div><dt>时间</dt><dd>{new Date(active.createdAt).toLocaleString("zh-CN")}</dd></div>
+              <div><dt>{t("drawer.model")}</dt><dd>{active.providerId} · {active.modelId}</dd></div>
+              <div><dt>{t("drawer.spec")}</dt><dd>{active.params.resolution || "—"} · {active.params.aspectRatio || "—"}{active.durationSec ? ` · ${Math.round(active.durationSec)}s` : ""}</dd></div>
+              <div><dt>{t("drawer.usage")}</dt><dd>{active.usage.totalTokens.toLocaleString()} tokens{active.usage.estimated ? t("drawer.usageEstimated") : t("drawer.usageActual")}</dd></div>
+              <div><dt>{t("drawer.project")}</dt><dd>{projectName(active.projectId)}</dd></div>
+              <div><dt>{t("drawer.source")}</dt><dd>{active.source === "agent" ? t("drawer.sourceAgent") : t("drawer.sourceStudio")} · {active.generationId}</dd></div>
+              <div><dt>{t("drawer.time")}</dt><dd>{formatDateTime(active.createdAt)}</dd></div>
             </dl>
             <section className="library-detail-section">
-              <h4>提示词 <button className="text-btn" onClick={() => void navigator.clipboard.writeText(active.prompt)}>复制</button></h4>
+              <h4>{t("drawer.prompt")} <button className="text-btn" onClick={() => void navigator.clipboard.writeText(active.prompt)}>{tBase("copy")}</button></h4>
               <p>{active.prompt || "（无提示词）"}</p>
             </section>
             {active.inputs.length > 0 && (
               <section className="library-detail-section">
-                <h4>输入素材（{active.inputs.length}）</h4>
+                <h4>{t("drawer.inputs", { count: active.inputs.length })}</h4>
                 <div className="library-mini-thumbs">
                   {active.inputs.map((input, index) => (
                     <span key={`${input.assetId || input.url}-${index}`} title={input.role}>
@@ -375,32 +375,32 @@ export function WorksLibrary({ projectId, onOpenStudio, toast }: Props) {
               </section>
             )}
             <section className="library-detail-section">
-              <h4>管理</h4>
+              <h4>{t("drawer.manage")}</h4>
               <div className="library-manage-row">
                 <input
                   value={renaming}
                   onChange={(event) => setRenaming(event.target.value)}
                   placeholder={active.title}
-                  aria-label="新标题"
+                  aria-label={t("drawer.newTitle")}
                   onKeyDown={(event) => event.key === "Enter" && void rename(active)}
                 />
-                <button className="soft-btn" onClick={() => void rename(active)}>重命名</button>
+                <button className="soft-btn" onClick={() => void rename(active)}>{tBase("rename")}</button>
               </div>
               <div className="library-manage-row">
                 <select
                   value={active.projectId || ""}
-                  aria-label="移动到项目"
+                  aria-label={t("drawer.moveLabel")}
                   onChange={(event) => void moveTo(active, event.target.value || null)}
                 >
-                  <option value="">未归档</option>
+                  <option value="">{tBase("unfiled")}</option>
                   {projects.map((project) => (
                     <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </select>
-                <button className="soft-btn is-danger" onClick={() => void remove(active)}>删除作品</button>
+                <button className="soft-btn is-danger" onClick={() => void remove(active)}>{t("drawer.delete")}</button>
               </div>
               <p className="library-footnote">
-                文件 {compactBytes(active.size)} · 删除后作品从作品库移除，底层文件按保留策略清理。
+                {t("drawer.file", { size: compactBytes(active.size) })} · {t("drawer.deleteNote")}
               </p>
             </section>
           </>

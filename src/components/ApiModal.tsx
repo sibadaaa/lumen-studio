@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, LoaderCircle, ShieldCheck, X } from "lucide-react";
 import type { ProviderConfigInput, ProviderKind } from "../../shared/contracts";
 import { api } from "../lib/api";
@@ -67,6 +68,7 @@ const TABS: ProviderTab[] = [
 ];
 
 export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
+  const { t } = useTranslation("api");
   const [provider, setProvider] = useState("ark");
   const [baseUrl, setBaseUrl] = useState(TABS[0].base);
   const [imageModel, setImageModel] = useState(TABS[0].image);
@@ -128,11 +130,11 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
     if (saving) return;
     setFormError("");
     if (!isMock && !configured && !apiKey.trim()) {
-      setFormError("首次配置需要填写 API Key");
+      setFormError(t("errKey"));
       return null;
     }
     if (!isMock && !baseUrl.trim().startsWith("http")) {
-      setFormError("Base URL 必须以 http:// 或 https:// 开头");
+      setFormError(t("errUrl"));
       return null;
     }
     const input: ProviderConfigInput = {
@@ -149,7 +151,7 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
       setKeyMasked(info.keyMasked);
       setApiKey("");
       await onRefresh();
-      toast(isMock ? "本地演示引擎已启用" : "API 配置已加密保存", "success");
+      toast(isMock ? t("toasts.mockOn") : t("toasts.saved"), "success");
       return info;
     } catch (error) {
       setFormError((error as Error).message);
@@ -162,11 +164,11 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
   const test = async () => {
     if (testState === "testing") return;
     setTestState("testing");
-    setTestMessage("正在保存配置并握手…");
+    setTestMessage(t("footer.testing"));
     const saved = await save();
     if (!saved) {
       setTestState("error");
-      setTestMessage("配置未保存，无法测试");
+      setTestMessage(t("toasts.notSaved"));
       return;
     }
     try {
@@ -174,7 +176,7 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
       setTestState(result.ok ? "success" : "error");
       setTestMessage(result.message);
       setLatency(result.latencyMs);
-      if (result.ok) toast("连接正常，能力已同步", "success");
+      if (result.ok) toast(t("toasts.ok"), "success");
     } catch (error) {
       setTestState("error");
       setTestMessage((error as Error).message);
@@ -195,19 +197,19 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
         <header className="modal-head">
           <div>
             <span className="eyebrow">CONNECTION</span>
-            <h2 id="apiTitle">连接生成 API</h2>
-            <p>密钥只写入本机 BFF，AES-256-GCM 加密存储；前端永不保留明文。</p>
+            <h2 id="apiTitle">{t("title")}</h2>
+            <p>{t("desc")}</p>
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="关闭"><X size={15} /></button>
+          <button className="modal-close" onClick={onClose} aria-label={t("close", { ns: "base" })}><X size={15} /></button>
         </header>
 
         <div className="modal-body">
-          <div className="provider-tabs" role="tablist" aria-label="API 提供方">
+          <div className="provider-tabs" role="tablist" aria-label={t("title")}>
             {TABS.map((item) => (
               <button key={item.id} className={provider === item.id ? "is-active" : ""} onClick={() => selectProvider(item.id)}>
                 <span className={`provider-logo ${item.id}`}>{item.logo}</span>
-                {item.label}
-                {item.tag && <em>{item.tag}</em>}
+                {t(`tabs.${item.id}` as "tabs.ark")}
+                {item.tag && <em>{item.id === "ark" ? t("tabs.tagRecommend") : t("tabs.tagOffline")}</em>}
               </button>
             ))}
           </div>
@@ -219,60 +221,60 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
             <div>
               <strong>
                 {offline
-                  ? "本机 BFF 未启动 · 前端回退 Mock"
+                  ? t("banner.offlineTitle")
                   : isMock
-                    ? "本地演示引擎已启用 · FFmpeg 合成"
+                    ? t("banner.mockTitle")
                     : configured
-                      ? "加密密钥已保存 · 等待握手"
-                      : "等待配置 Provider"}
+                      ? t("banner.configuredTitle")
+                      : t("banner.setupTitle")}
               </strong>
               <span>
                 {offline
-                  ? "运行 npm run dev:server 后刷新，即可启用真实上传与任务队列"
+                  ? t("banner.offlineBody")
                   : isMock
-                    ? "不调用外部 API；用本地素材与 FFmpeg 验证完整链路"
-                    : `密钥掩码 ${keyMasked || "—"} · 存于服务端 · 文件权限 0600`}
+                    ? t("banner.mockBody")
+                    : t("banner.configuredBody", { mask: keyMasked || "—" })}
               </span>
             </div>
             <span className="banner-tag">{offline ? "OFFLINE" : isMock ? "LOCAL" : configured ? "ENCRYPTED" : "SETUP"}</span>
           </div>
 
           <div className="connection-meta">
-            <span><i className={runtime.online ? "ok" : ""} />BFF {runtime.online ? `v${runtime.version}` : "离线"}</span>
-            <span><i className={runtime.ffmpeg ? "ok" : ""} />FFmpeg {runtime.ffmpeg ? "可用" : "未检测"}</span>
-            <span><i className={configured ? "ok" : ""} />{configured ? "已配置" : "未配置"}</span>
+            <span><i className={runtime.online ? "ok" : ""} />{t("meta.bff", { version: runtime.version })}</span>
+            <span><i className={runtime.ffmpeg ? "ok" : ""} />FFmpeg {runtime.ffmpeg ? t("meta.ffmpegOk") : t("meta.ffmpegMissing")}</span>
+            <span><i className={configured ? "ok" : ""} />{configured ? t("meta.configured") : t("meta.unconfigured")}</span>
           </div>
 
           <div className="form-grid">
             <label className="form-field full">
-              <span>Base URL</span>
+              <span>{t("form.baseUrl")}</span>
               <input value={isMock ? "local://mock" : baseUrl} onChange={(event) => setBaseUrl(event.target.value)} spellCheck={false} disabled={isMock} />
             </label>
             {!isMock && (
               <label className="form-field full">
-                <span>API Key {configured && <em className="field-note">已加密保存，留空保持不变</em>}</span>
+                <span>{t("form.key")} {configured && <em className="field-note">{t("form.keySaved")}</em>}</span>
                 <div className="secret-input">
                   <input
                     type={showKey ? "text" : "password"}
                     value={apiKey}
                     onChange={(event) => setApiKey(event.target.value)}
-                    placeholder={configured ? `${keyMasked || "••••••••"} · 留空保持不变` : "输入 Provider API Key"}
+                    placeholder={configured ? t("form.keyKeep", { mask: keyMasked || "••••••••" }) : t("form.keyPlaceholder")}
                     autoComplete="new-password"
                     spellCheck={false}
                   />
                   <button type="button" onClick={() => setShowKey((prev) => !prev)}>
-                    {showKey ? <EyeOff size={13} /> : <Eye size={13} />}{showKey ? "隐藏" : "显示"}
+                    {showKey ? <EyeOff size={13} /> : <Eye size={13} />}{showKey ? t("form.hide") : t("form.show")}
                   </button>
                 </div>
-                <small>保存后服务端仅返回掩码；草稿不会写入 localStorage。</small>
+                <small>{t("form.keyNote")}</small>
               </label>
             )}
             <label className="form-field">
-              <span>图像模型</span>
+              <span>{t("form.imageModel")}</span>
               <input value={imageModel} onChange={(event) => setImageModel(event.target.value)} spellCheck={false} disabled={isMock} />
             </label>
             <label className="form-field">
-              <span>视频模型</span>
+              <span>{t("form.videoModel")}</span>
               <input value={videoModel} onChange={(event) => setVideoModel(event.target.value)} spellCheck={false} disabled={isMock} />
             </label>
           </div>
@@ -280,32 +282,29 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
           {formError && <div className="form-error">{formError}</div>}
 
           <div className="capability-row">
-            <span className="capability-label">能力声明</span>
+            <span className="capability-label">{t("caps.label")}</span>
             {[
-              ["文生图", capabilities?.textToImage ?? true],
-              ["图生图", capabilities?.imageToImage ?? true],
-              ["文生视频", capabilities?.textToVideo ?? true],
-              ["图生视频", capabilities?.imageToVideo ?? true],
-              ["多图分镜", capabilities?.multiImageToVideo ?? true],
+              [t("caps.t2i"), capabilities?.textToImage ?? true],
+              [t("caps.i2i"), capabilities?.imageToImage ?? true],
+              [t("caps.t2v"), capabilities?.textToVideo ?? true],
+              [t("caps.i2v"), capabilities?.imageToVideo ?? true],
+              [t("caps.multi"), capabilities?.multiImageToVideo ?? true],
             ].map(([label, enabled]) => (
               <span key={String(label)} className={`capability ${enabled ? "on" : ""}`}><i />{label}</span>
             ))}
-            <span className={`capability ${runtime.ffmpeg ? "on" : ""}`}><i />FFmpeg 合成</span>
+            <span className={`capability ${runtime.ffmpeg ? "on" : ""}`}><i />{t("caps.ffmpeg")}</span>
           </div>
 
           <div className="modal-note">
             <svg viewBox="0 0 18 18" fill="none"><path d="M9 2.6 15.3 14H2.7L9 2.6Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="M9 7v3.2M9 12.6v.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-            <p>
-              密钥经 scrypt 派生密钥后使用 AES-256-GCM 加密，落盘为 <code>v1:iv:tag:ciphertext</code>；接口与日志只返回掩码。
-              本地演示模式不访问外网。若暴露到公网，请在反向代理层增加访问控制并设置 <code>APP_SECRET</code>。
-            </p>
+            <p>{t("note")}</p>
           </div>
         </div>
 
         <footer className="modal-foot">
           <button className={`test-btn ${testState === "testing" ? "is-testing" : ""} ${testState === "success" ? "is-success" : ""}`} onClick={() => void test()} disabled={saving || testState === "testing"}>
             <span className="test-dot" />
-            {testState === "testing" ? "正在握手…" : "保存并测试"}
+            {testState === "testing" ? t("footer.testing") : t("footer.test")}
           </button>
           <div className="modal-foot-right">
             <span className={`test-state ${testState === "success" ? "success" : testState === "error" ? "error" : ""}`}>
@@ -314,11 +313,11 @@ export function ApiModal({ open, onClose, toast, runtime, onRefresh }: Props) {
               ) : testMessage ? (
                 <>{testMessage}{latency !== null ? ` · ${latency}ms` : ""}</>
               ) : (
-                "等待测试"
+                t("footer.wait")
               )}
             </span>
             <button className="save-btn" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? "保存中…" : "保存配置"}
+              {saving ? t("footer.saving") : t("footer.save")}
             </button>
           </div>
         </footer>

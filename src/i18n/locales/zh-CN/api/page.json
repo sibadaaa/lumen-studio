@@ -1,0 +1,66 @@
+{
+  "title": "连接生成 API",
+  "desc": "密钥只写入本机 BFF，AES-256-GCM 加密存储；前端永不保留明文。",
+  "tabs": {
+    "ark": "火山方舟",
+    "openai": "OpenAI 兼容",
+    "custom": "自定义网关",
+    "mock": "本地演示",
+    "tagRecommend": "推荐",
+    "tagOffline": "离线"
+  },
+  "banner": {
+    "offlineTitle": "本机 BFF 未启动 · 前端回退 Mock",
+    "offlineBody": "运行 npm run dev:server 后刷新，即可启用真实上传与任务队列",
+    "mockTitle": "本地演示引擎已启用 · FFmpeg 合成",
+    "mockBody": "不调用外部 API；用本地素材与 FFmpeg 验证完整链路",
+    "configuredTitle": "加密密钥已保存 · 等待握手",
+    "configuredBody": "密钥掩码 {{mask}} · 存于服务端 · 文件权限 0600",
+    "setupTitle": "等待配置 Provider"
+  },
+  "meta": {
+    "bff": "BFF {{version}}",
+    "bffOffline": "BFF 离线",
+    "ffmpegOk": "FFmpeg 可用",
+    "ffmpegMissing": "FFmpeg 未检测",
+    "configured": "已配置",
+    "unconfigured": "未配置"
+  },
+  "form": {
+    "baseUrl": "Base URL",
+    "key": "API Key",
+    "keySaved": "已加密保存，留空保持不变",
+    "keyPlaceholder": "输入 Provider API Key",
+    "keyKeep": "{{mask}} · 留空保持不变",
+    "keyNote": "保存后服务端仅返回掩码；草稿不会写入 localStorage。",
+    "imageModel": "图像模型",
+    "videoModel": "视频模型",
+    "show": "显示",
+    "hide": "隐藏"
+  },
+  "errKey": "首次配置需要填写 API Key",
+  "errUrl": "Base URL 必须以 http:// 或 https:// 开头",
+  "caps": {
+    "label": "能力声明",
+    "t2i": "文生图",
+    "i2i": "图生图",
+    "t2v": "文生视频",
+    "i2v": "图生视频",
+    "multi": "多图分镜",
+    "ffmpeg": "FFmpeg 合成"
+  },
+  "note": "密钥经 scrypt 派生密钥后使用 AES-256-GCM 加密，落盘为 v1:iv:tag:ciphertext；接口与日志只返回掩码。本地演示模式不访问外网。若暴露到公网，请在反向代理层增加访问控制并设置 APP_SECRET。",
+  "footer": {
+    "test": "保存并测试",
+    "testing": "正在握手…",
+    "wait": "等待测试",
+    "save": "保存配置",
+    "saving": "保存中…"
+  },
+  "toasts": {
+    "mockOn": "本地演示引擎已启用",
+    "saved": "API 配置已加密保存",
+    "ok": "连接正常，能力已同步",
+    "notSaved": "配置未保存，无法测试"
+  }
+}

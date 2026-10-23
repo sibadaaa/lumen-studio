@@ -1,0 +1,84 @@
+{
+  "title": "API & Models",
+  "desc": "Connect a provider, fetch its model catalog and set per-mode defaults. Keys stay server-side.",
+  "descOfflineSuffix": " · local BFF offline",
+  "statsModels": "{{count}} models",
+  "statsEnabled": "{{count}} enabled",
+  "tabs": {
+    "connections": "Connections",
+    "catalog": "Catalog",
+    "routes": "Routing"
+  },
+  "catalog": {
+    "searchPlaceholder": "Search model IDs…",
+    "searchAria": "Search models",
+    "all": "All",
+    "kindImage": "Image",
+    "kindVideo": "Video",
+    "kindUnknown": "Unverified",
+    "manual": "Add manually",
+    "fetch": "Fetch models",
+    "fetching": "Fetching…",
+    "addPlaceholder": "Model ID, e.g. doubao-seedream-4-0-250828 or ep-2026…",
+    "add": "Add",
+    "added": "Model added",
+    "kindLabel": "Model kind",
+    "enableAria": "Enable {{id}}",
+    "emptyTitle": "No models yet",
+    "emptyBody": "Hit “Fetch models” to pull the list from {{provider}}, or add a model ID manually.",
+    "loading": "Loading catalog…",
+    "table": {
+      "enabled": "On",
+      "model": "Model",
+      "kind": "Kind",
+      "modes": "Modes",
+      "status": "Status",
+      "lastUsed": "Last used",
+      "deleteAria": "Delete {{id}}"
+    },
+    "kind": {
+      "image": "Image",
+      "video": "Video",
+      "unknown": "Unverified"
+    },
+    "status": {
+      "ready": "Ready",
+      "unverified": "Unverified",
+      "missing": "Delisted"
+    },
+    "neverUsed": "Never",
+    "deleteTitle": "Delete model",
+    "deleted": "Model removed from the catalog",
+    "footnote": "{{provider}} · the catalog lives in local SQLite; syncing never calls generation and costs no tokens.",
+    "enableSuggested": "Enable suggested ({{count}})",
+    "enabledSuggested": "Enabled {{count}} models"
+  },
+  "routes": {
+    "hint": "Pick a default model per mode; incomplete models can be saved but are re-validated before generating.",
+    "auto": "Auto-match",
+    "matched": "Matched defaults for {{count}} modes",
+    "unmatched": "No eligible models to match",
+    "unset": "Not set",
+    "selectAria": "{{mode}} default model",
+    "saved": "Default set for {{mode}}",
+    "savedWithWarning": "Saved, but this model has incomplete capabilities"
+  },
+  "connections": {
+    "active": "Active",
+    "configured": "Configured",
+    "unconfigured": "Not configured",
+    "baseUrl": "Base URL",
+    "key": "Key",
+    "keyLocal": "Local demo · no key",
+    "keyNotSet": "Not set",
+    "models": "Image / video models",
+    "lastTest": "Last test",
+    "never": "Never",
+    "test": "Test connection",
+    "testing": "Handshaking…",
+    "edit": "Edit config",
+    "setActive": "Set active",
+    "switched": "Switched to {{provider}}",
+    "ok": "Connection OK"
+  }
+}

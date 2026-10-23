@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, LoaderCircle, PlugZap, RefreshCw, ShieldCheck } from "lucide-react";
 import type {
   GenerationMode,
@@ -19,18 +20,6 @@ const MODE_ORDER: GenerationMode[] = [
   "multi-image-to-video",
 ];
 
-const KIND_LABELS: Record<string, string> = {
-  image: "图像",
-  video: "视频",
-  unknown: "待确认",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  ready: "就绪",
-  unverified: "未验证",
-  missing: "已下架",
-};
-
 interface Props {
   runtime: StudioRuntime;
   onRefresh: () => Promise<void>;
@@ -39,6 +28,7 @@ interface Props {
 }
 
 export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
+  const { t } = useTranslation("models");
   const [tab, setTab] = useState<"connections" | "catalog" | "routes">(
     runtime.online && runtime.activeProviderId ? "catalog" : "connections"
   );
@@ -119,7 +109,7 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
       const result = await api.enableModels(providerId, syncResult.suggestedEnabled, true);
       setModels(result.items);
       setSyncResult((prev) => (prev ? { ...prev, suggestedEnabled: [] } : prev));
-      toast(`已启用 ${result.changed} 个模型`, "success");
+      toast(t("catalog.enabledSuggested", { count: result.changed }), "success");
       await onRefresh();
     } catch (error) {
       toast((error as Error).message);
@@ -139,7 +129,7 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
     try {
       await api.deleteModel(providerId, model.id);
       setModels((prev) => prev.filter((item) => item.id !== model.id));
-      toast("模型已从目录移除", "success");
+      toast(t("catalog.deleted"), "success");
     } catch (error) {
       toast((error as Error).message);
     }
@@ -157,7 +147,7 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
       setModels((prev) => [...prev, created]);
       setNewModelId("");
       setAdding(false);
-      toast("模型已添加", "success");
+      toast(t("catalog.added"), "success");
       await onRefresh();
     } catch (error) {
       toast((error as Error).message);
@@ -168,15 +158,15 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
     try {
       const route = await api.updateModelRoute(mode, { providerId: model.providerId, modelId: model.id });
       setRoutes((prev) => prev.map((item) => (item.mode === mode ? route : item)));
-      toast(`已设置${MODE_LABELS[mode]}默认模型`, "success");
+      toast(t("routes.saved", { mode: MODE_LABELS[mode] }), "success");
     } catch (error) {
       const message = (error as Error).message;
       toast(message);
-      if (message.includes("未启用") || message.includes("不支持")) {
+      if (/未启用|不支持|disabled|unsupported|invalid/i.test(message)) {
         try {
           const route = await api.updateModelRoute(mode, { providerId: model.providerId, modelId: model.id }, true);
           setRoutes((prev) => prev.map((item) => (item.mode === mode ? route : item)));
-          toast("已保存，但该模型能力不完整，生成时可能受限");
+          toast(t("routes.savedWithWarning"));
         } catch {
           /* ignore */
         }
@@ -203,7 +193,7 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
     }
     const routeList = await api.modelRoutes();
     setRoutes(routeList.items);
-    toast(changed > 0 ? `已为 ${changed} 个模式匹配默认模型` : "没有可用模型可以匹配", changed > 0 ? "success" : "default");
+    toast(changed > 0 ? t("routes.matched", { count: changed }) : t("routes.unmatched"), changed > 0 ? "success" : "default");
   };
 
   return (
@@ -212,25 +202,25 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
         <header className="library-head">
           <div>
             <span className="eyebrow">API &amp; MODELS</span>
-            <h1>API 与模型</h1>
+            <h1>{t("title")}</h1>
             <p>
-              连接生成服务、获取模型目录，并为五种模式设置默认模型。密钥仅存于服务端。
-              {!runtime.online && <strong className="models-offline"> · 本机 BFF 未启动</strong>}
+              {t("desc")}
+              {!runtime.online && <strong className="models-offline">{t("descOfflineSuffix")}</strong>}
             </p>
           </div>
           <div className="library-head-side">
             <div className="library-stats">
-              <span>{models.length} 个模型</span>
-              <span>{models.filter((model) => model.enabled).length} 已启用</span>
+              <span>{t("statsModels", { count: models.length })}</span>
+              <span>{t("statsEnabled", { count: models.filter((model) => model.enabled).length })}</span>
             </div>
           </div>
         </header>
 
-        <div className="models-tabs" role="tablist" aria-label="API 与模型分区">
+        <div className="models-tabs" role="tablist" aria-label={t("title")}>
           {([
-            ["connections", "连接"],
-            ["catalog", `模型库 ${models.length ? models.length : ""}`],
-            ["routes", "路由"],
+            ["connections", t("tabs.connections")],
+            ["catalog", `${t("tabs.catalog")}${models.length ? ` ${models.length}` : ""}`],
+            ["routes", t("tabs.routes")],
           ] as const).map(([key, label]) => (
             <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>
               {label}
@@ -250,20 +240,20 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
                   className="library-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="搜索模型 ID…"
-                  aria-label="搜索模型"
+                  placeholder={t("catalog.searchPlaceholder")}
+                  aria-label={t("catalog.searchAria")}
                 />
-                <div className="library-chips" role="group" aria-label="类型筛选">
+                <div className="library-chips" role="group" aria-label={t("catalog.kindLabel")}>
                   {(["all", "image", "video", "unknown"] as const).map((kind) => (
                     <button key={kind} aria-pressed={kindFilter === kind} className={kindFilter === kind ? "is-active" : ""} onClick={() => setKindFilter(kind)}>
-                      {kind === "all" ? "全部" : KIND_LABELS[kind]}
+                      {kind === "all" ? t("catalog.all") : t(`catalog.kind.${kind}`)}
                     </button>
                   ))}
                 </div>
                 <div className="library-actions">
-                  <button className="soft-btn" onClick={() => setAdding((prev) => !prev)}>手动添加</button>
+                  <button className="soft-btn" onClick={() => setAdding((prev) => !prev)}>{t("catalog.manual")}</button>
                   <button className="ws-primary" onClick={() => void sync()} disabled={syncing || !runtime.online}>
-                    {syncing ? <><LoaderCircle size={13} className="spin" /> 正在获取…</> : <><RefreshCw size={13} /> 获取模型</>}
+                    {syncing ? <><LoaderCircle size={13} className="spin" /> {t("catalog.fetching")}</> : <><RefreshCw size={13} /> {t("catalog.fetch")}</>}
                   </button>
                 </div>
               </div>
@@ -272,7 +262,7 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
                 <div className={`models-sync-banner ${syncResult.supported ? "" : "is-warning"}`}>
                   <span>{syncResult.message}</span>
                   {syncResult.suggestedEnabled.length > 0 && (
-                    <button onClick={() => void enableSuggested()}>启用建议模型（{syncResult.suggestedEnabled.length}）</button>
+                    <button onClick={() => void enableSuggested()}>{t("catalog.enableSuggested", { count: syncResult.suggestedEnabled.length })}</button>
                   )}
                 </div>
               )}
@@ -283,35 +273,35 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
                     autoFocus
                     value={newModelId}
                     onChange={(event) => setNewModelId(event.target.value)}
-                    placeholder="模型 ID，例如 doubao-seedream-4-0-250828 或 ep-2026…"
+                    placeholder={t("catalog.addPlaceholder")}
                   />
                   <div className="library-chips">
                     {(["image", "video"] as const).map((kind) => (
                       <button key={kind} aria-pressed={newModelKind === kind} className={newModelKind === kind ? "is-active" : ""} onClick={() => setNewModelKind(kind)}>
-                        {KIND_LABELS[kind]}
+                        {t(`catalog.kind.${kind}`)}
                       </button>
                     ))}
                   </div>
-                  <button className="ws-primary" onClick={() => void addManual()}>添加</button>
+                  <button className="ws-primary" onClick={() => void addManual()}>{t("catalog.add")}</button>
                 </div>
               )}
 
               {loading ? (
-                <p className="library-loading">正在读取模型目录…</p>
+                <p className="library-loading">{t("catalog.loading")}</p>
               ) : filtered.length === 0 ? (
                 <div className="library-empty">
-                  <h3>还没有模型</h3>
-                  <p>点击「获取模型」从 {provider?.label || "当前连接"} 拉取模型列表，或手动添加模型 ID。</p>
+                  <h3>{t("catalog.emptyTitle")}</h3>
+                  <p>{t("catalog.emptyBody", { provider: provider?.label || "" })}</p>
                 </div>
               ) : (
-                <div className="model-table" role="table" aria-label="模型目录">
+                <div className="model-table" role="table" aria-label={t("tabs.catalog")}>
                   <div className="model-table-head" role="row">
-                    <span>启用</span>
-                    <span>模型</span>
-                    <span>类型</span>
-                    <span>支持模式</span>
-                    <span>状态</span>
-                    <span>最近使用</span>
+                    <span>{t("catalog.table.enabled")}</span>
+                    <span>{t("catalog.table.model")}</span>
+                    <span>{t("catalog.table.kind")}</span>
+                    <span>{t("catalog.table.modes")}</span>
+                    <span>{t("catalog.table.status")}</span>
+                    <span>{t("catalog.table.lastUsed")}</span>
                     <span />
                   </div>
                   {filtered.map((model) => (
@@ -321,7 +311,7 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
                           type="checkbox"
                           checked={model.enabled}
                           disabled={model.kind === "unknown"}
-                          aria-label={`启用 ${model.id}`}
+                          aria-label={t("catalog.enableAria", { id: model.id })}
                           onChange={() => void toggleEnabled(model)}
                         />
                       </span>
@@ -332,28 +322,28 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
                       <span>
                         <select
                           value={model.kind}
-                          aria-label="模型类型"
+                          aria-label={t("catalog.kindLabel")}
                           onChange={(event) => void changeKind(model, event.target.value as "image" | "video" | "unknown")}
                         >
                           {(["image", "video", "unknown"] as const).map((kind) => (
-                            <option key={kind} value={kind}>{KIND_LABELS[kind]}</option>
+                            <option key={kind} value={kind}>{t(`catalog.kind.${kind}`)}</option>
                           ))}
                         </select>
                       </span>
                       <span className="model-modes">
                         {model.modes.length === 0 ? "—" : model.modes.map((mode) => MODE_LABELS[mode]).join(" / ")}
                       </span>
-                      <span className={`model-status is-${model.status}`}>{STATUS_LABELS[model.status]}</span>
-                      <span>{model.lastUsedAt ? relativeTime(model.lastUsedAt) : "未使用"}</span>
+                      <span className={`model-status is-${model.status}`}>{t(`catalog.status.${model.status}`)}</span>
+                      <span>{model.lastUsedAt ? relativeTime(model.lastUsedAt) : t("catalog.neverUsed")}</span>
                       <span className="model-row-actions">
-                        <button title="删除模型" aria-label={`删除 ${model.id}`} onClick={() => void removeModel(model)}>✕</button>
+                        <button title={t("catalog.deleteTitle")} aria-label={t("catalog.table.deleteAria", { id: model.id })} onClick={() => void removeModel(model)}>✕</button>
                       </span>
                     </div>
                   ))}
                 </div>
               )}
               <p className="library-footnote">
-                {provider?.label || "当前连接"} · 模型目录保存在本地 SQLite；同步不会调用生成接口，也不消耗 tokens。
+                {t("catalog.footnote", { provider: provider?.label || "" })}
               </p>
             </>
           )}
@@ -361,9 +351,9 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
           {tab === "routes" && (
             <>
               <div className="library-toolbar">
-                <p className="library-hint">为每种生成模式选择默认模型；能力不完整时可保存，但生成前会再次校验。</p>
+                <p className="library-hint">{t("routes.hint")}</p>
                 <div className="library-actions">
-                  <button className="ws-primary" onClick={() => void autoMatch()}>自动匹配</button>
+                  <button className="ws-primary" onClick={() => void autoMatch()}>{t("routes.auto")}</button>
                 </div>
               </div>
               <div className="model-routes">
@@ -378,14 +368,14 @@ export function ModelsPage({ runtime, onRefresh, onOpenApi, toast }: Props) {
                       <strong>{MODE_LABELS[mode]}</strong>
                       <select
                         value={selectedKey}
-                        aria-label={`${MODE_LABELS[mode]}默认模型`}
+                        aria-label={t("routes.selectAria", { mode: MODE_LABELS[mode] })}
                         onChange={(event) => {
                           const [pid, mid] = event.target.value.split("::");
                           const model = models.find((item) => item.providerId === pid && item.id === mid);
                           if (model) void saveRoute(mode, model);
                         }}
                       >
-                        <option value="">未设置</option>
+                        <option value="">{t("routes.unset")}</option>
                         {candidates.map((model) => (
                           <option key={`${model.providerId}::${model.id}`} value={`${model.providerId}::${model.id}`}>
                             {model.label} · {model.providerId}
@@ -418,6 +408,7 @@ function ConnectionsTab({
   onRefresh: () => Promise<void>;
   toast: (message: string, type?: "default" | "success") => void;
 }) {
+  const { t } = useTranslation("models");
   const [testing, setTesting] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, string>>({});
 
@@ -426,7 +417,7 @@ function ConnectionsTab({
     try {
       const result = await api.testProvider(provider.id);
       setResults((prev) => ({ ...prev, [provider.id]: `${result.message}${result.latencyMs ? ` · ${result.latencyMs}ms` : ""}` }));
-      if (result.ok) toast("连接正常", "success");
+      if (result.ok) toast(t("connections.ok"), "success");
       await onRefresh();
     } catch (error) {
       setResults((prev) => ({ ...prev, [provider.id]: (error as Error).message }));
@@ -439,7 +430,7 @@ function ConnectionsTab({
     try {
       await api.activateProvider(provider.id);
       await onRefresh();
-      toast(`已切换到 ${provider.label}`, "success");
+      toast(t("connections.switched", { provider: provider.label }), "success");
     } catch (error) {
       toast((error as Error).message);
     }
@@ -452,26 +443,26 @@ function ConnectionsTab({
           <header>
             <strong>{provider.label}</strong>
             <span className={`provider-state ${provider.configured ? "ok" : ""}`}>
-              {provider.id === activeId ? <><CheckCircle2 size={12} /> 当前连接</> : provider.configured ? "已配置" : "未配置"}
+              {provider.id === activeId ? <><CheckCircle2 size={12} /> {t("connections.active")}</> : provider.configured ? t("connections.configured") : t("connections.unconfigured")}
             </span>
           </header>
           <dl>
-            <div><dt>Base URL</dt><dd>{provider.baseUrl}</dd></div>
-            <div><dt>密钥</dt><dd>{provider.kind === "mock" ? "本地演示 · 无需密钥" : provider.keyMasked || "未设置"}</dd></div>
-            <div><dt>图像 / 视频模型</dt><dd>{provider.imageModel} / {provider.videoModel}</dd></div>
-            <div><dt>最近测试</dt><dd>{provider.lastTestedAt ? `${relativeTime(provider.lastTestedAt)} · ${provider.lastLatencyMs ?? "—"}ms` : "未测试"}</dd></div>
+            <div><dt>{t("connections.baseUrl")}</dt><dd>{provider.baseUrl}</dd></div>
+            <div><dt>{t("connections.key")}</dt><dd>{provider.kind === "mock" ? t("connections.keyLocal") : provider.keyMasked || t("connections.keyNotSet")}</dd></div>
+            <div><dt>{t("connections.models")}</dt><dd>{provider.imageModel} / {provider.videoModel}</dd></div>
+            <div><dt>{t("connections.lastTest")}</dt><dd>{provider.lastTestedAt ? `${relativeTime(provider.lastTestedAt)} · ${provider.lastLatencyMs ?? "—"}ms` : t("connections.never")}</dd></div>
           </dl>
           {results[provider.id] && <p className="provider-test-result">{results[provider.id]}</p>}
           <footer>
             <button className="soft-btn" onClick={() => void test(provider)} disabled={testing === provider.id}>
-              {testing === provider.id ? <><LoaderCircle size={13} className="spin" /> 正在握手…</> : <><ShieldCheck size={13} /> 测试连接</>}
+              {testing === provider.id ? <><LoaderCircle size={13} className="spin" /> {t("connections.testing")}</> : <><ShieldCheck size={13} /> {t("connections.test")}</>}
             </button>
             {provider.id !== activeId && provider.configured && (
               <button className="soft-btn" onClick={() => void activate(provider)}>
-                <PlugZap size={13} /> 设为当前
+                <PlugZap size={13} /> {t("connections.setActive")}
               </button>
             )}
-            <button className="soft-btn" onClick={onOpenApi}>编辑配置</button>
+            <button className="soft-btn" onClick={onOpenApi}>{t("connections.edit")}</button>
           </footer>
         </article>
       ))}

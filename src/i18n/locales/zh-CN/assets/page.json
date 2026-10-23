@@ -1,0 +1,82 @@
+{
+  "title": "素材库",
+  "desc": "上传、整理、复用你的参考图与首帧；生成结果请在作品库中另存。",
+  "stats": "{{count}} 件素材",
+  "statsUnused": "{{count}} 件未使用",
+  "upload": "上传素材",
+  "refreshAria": "刷新素材列表",
+  "searchPlaceholder": "搜索文件名、标签…",
+  "filterProject": "按项目筛选",
+  "filterKind": "按类型筛选",
+  "filterSource": "按来源筛选",
+  "filterTag": "按标签筛选",
+  "sort": {
+    "newest": "最新",
+    "oldest": "最早",
+    "size": "最大",
+    "name": "名称"
+  },
+  "kind": {
+    "all": "全部类型",
+    "image": "图片",
+    "video": "视频"
+  },
+  "source": {
+    "all": "全部来源",
+    "upload": "上传",
+    "work": "来自作品",
+    "agent": "Agent"
+  },
+  "tagAll": "全部标签",
+  "tagWithCount": "{{tag}}（{{count}}）",
+  "unused": "未使用",
+  "dropzone": "拖拽图片到这里上传 · 支持 PNG / JPEG / WebP · 单张 ≤ 20MB",
+  "onlyImages": "仅支持 PNG / JPEG / WebP 图片",
+  "duplicate": "「{{name}}」素材库已有相同文件，已保留本次上传",
+  "added": "已添加 {{count}} 张素材",
+  "emptyFilteredTitle": "没有符合条件的素材",
+  "emptyFilteredBody": "调整筛选条件，或清除筛选查看全部素材。",
+  "emptyTitle": "还没有素材",
+  "emptyBody": "上传第一张素材，或从作品库把成片另存为素材。",
+  "loadMore": "加载更多（共 {{count}} 件）",
+  "errorRead": "无法读取素材库：{{message}}",
+  "uploadDone": "完成",
+  "uploadFailed": "失败",
+  "drawer": {
+    "title": "素材详情",
+    "useInStudio": "在创作台使用",
+    "file": "文件",
+    "project": "项目",
+    "source": "来源",
+    "usage": "引用",
+    "usedBy": "被 {{count}} 个任务使用",
+    "unused": "未被使用",
+    "uploadedAt": "上传于",
+    "tags": "标签（{{count}}/8）",
+    "addTag": "添加",
+    "tagPlaceholder": "添加标签",
+    "removeTagAria": "移除标签 {{tag}}",
+    "usageTitle": "被以下任务使用",
+    "delete": "删除素材",
+    "deleteConfirm": "删除素材「{{name}}」？被历史作品引用时，输入缩略图将不可用。",
+    "deleted": "素材已删除",
+    "deleteNote": "删除为软删除；文件按保留策略清理，正在使用的素材会被阻止删除。",
+    "spec": "规格"
+  },
+  "bulk": {
+    "movePlaceholder": "移动到项目…",
+    "addTags": "添加标签",
+    "addTagsPrompt": "输入要添加的标签",
+    "delete": "删除",
+    "deleteConfirm": "删除选中的 {{count}} 个素材？正在使用的素材会被跳过。",
+    "done": "已更新 {{count}} 个素材",
+    "partial": "成功 {{updated}} · 失败 {{failed}}：{{message}}"
+  },
+  "sortLabel": "排序",
+  "picker": {
+    "title": "从素材库选择",
+    "desc": "选择一张素材填入当前模式，不会重复上传。",
+    "empty": "素材库还没有可用素材。",
+    "loading": "正在读取素材…"
+  }
+}

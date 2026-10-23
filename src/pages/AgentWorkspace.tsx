@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../i18n";
 import {
   ArrowLeft,
   ArrowRight,
@@ -45,9 +47,10 @@ const clock = (iso: string) =>
 
 const relative = (iso: string) => {
   const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  const untyped = i18n.t as (key: string, options?: Record<string, unknown>) => string;
+  if (diff < 60_000) return untyped("justNow", { ns: "base" });
+  if (diff < 3_600_000) return untyped("minutesAgo", { ns: "base", count: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return untyped("hoursAgo", { ns: "base", count: Math.floor(diff / 3_600_000) });
   return new Date(iso).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 };
 
@@ -60,6 +63,7 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
 };
 
 function ToolCard({ tool, onOpenStoryboard }: { tool: AgentToolState; onOpenStoryboard: () => void }) {
+  const { t } = useTranslation("agent");
   const Icon = TOOL_ICONS[tool.name] || Wrench;
   const data = tool.data || {};
   const rows = Array.isArray(data.rows) ? (data.rows as Array<{ shot: string; motion: string; desc: string; dur: number }>) : [];
@@ -76,7 +80,7 @@ function ToolCard({ tool, onOpenStoryboard }: { tool: AgentToolState; onOpenStor
           <small>{tool.detail}</small>
         </span>
         <span className={`ws-tool-status ${tool.status}`}>
-          {tool.status === "done" ? "成功" : tool.status === "failed" ? "失败" : "运行中"}
+          {tool.status === "done" ? t("tool.done") : tool.status === "failed" ? t("tool.failed") : t("tool.runningTool")}
         </span>
         {tool.tokens ? <span className="ws-tool-tokens">{compact(tool.tokens)} tokens</span> : <span className="ws-tool-tokens">—</span>}
         <ChevronDown className="ws-chevron" size={12} />
@@ -84,16 +88,16 @@ function ToolCard({ tool, onOpenStoryboard }: { tool: AgentToolState; onOpenStor
       <div className="ws-tool-body">
         {inspect && (
           <>
-            <div className="ws-kv"><span>项目</span><code>{String(data.project || "—")}</code></div>
-            <div className="ws-kv"><span>素材</span><code>{String(data.assets ?? 0)} images</code></div>
+            <div className="ws-kv"><span>{t("tool.project")}</span><code>{String(data.project || "—")}</code></div>
+            <div className="ws-kv"><span>{t("tool.assets")}</span><code>{String(data.assets ?? 0)}</code></div>
             <div className="ws-kv"><span>Provider</span><code>{String(data.provider || "—")}</code></div>
-            <div className="ws-kv"><span>编码 / 存储</span><code>FFmpeg {data.ffmpeg ? "可用" : "不可用"} · {String(data.database || "sqlite")}</code></div>
+            <div className="ws-kv"><span>{t("tool.codec")}</span><code>FFmpeg {data.ffmpeg ? t("tool.ffmpegOk") : t("tool.ffmpegBad")} · {String(data.database || "sqlite")}</code></div>
           </>
         )}
         {rows.length > 0 && (
           <>
             <div className="ws-mini-table">
-              <div className="ws-mini-row head"><span>#</span><span>景别</span><span>运镜</span><span>画面</span><span>时长</span></div>
+              <div className="ws-mini-row head"><span>#</span><span>{t("tool.size")}</span><span>{t("tool.motion")}</span><span>{t("tool.frame")}</span><span>{t("tool.duration")}</span></div>
               {rows.map((row, index) => (
                 <div className="ws-mini-row" key={`${row.shot}-${index}`}>
                   <span>{String(index + 1).padStart(2, "0")}</span>
@@ -105,7 +109,7 @@ function ToolCard({ tool, onOpenStoryboard }: { tool: AgentToolState; onOpenStor
               ))}
             </div>
             <button className="ws-inline-action" onClick={onOpenStoryboard}>
-              在创作台打开分镜表 <ArrowRight size={12} />
+              {t("tool.openStoryboard")} <ArrowRight size={12} />
             </button>
           </>
         )}
@@ -118,7 +122,7 @@ function ToolCard({ tool, onOpenStoryboard }: { tool: AgentToolState; onOpenStor
                 </div>
               ) : (
                 <a className="ws-gen-thumb" key={output.id} href={output.url} target="_blank" rel="noreferrer">
-                  <img src={output.thumbnailUrl || output.url} alt="生成结果" />
+                  <img src={output.thumbnailUrl || output.url} alt={t("tool.outputs")} />
                   <span>IMG</span>
                 </a>
               )
@@ -126,25 +130,26 @@ function ToolCard({ tool, onOpenStoryboard }: { tool: AgentToolState; onOpenStor
           </div>
         )}
         {!inspect && rows.length === 0 && outputs.length === 0 && (
-          <div className="ws-kv"><span>状态</span><code>{tool.detail}</code></div>
+          <div className="ws-kv"><span>{t("tool.status")}</span><code>{tool.detail}</code></div>
         )}
-        {data.jobId ? <div className="ws-kv"><span>任务</span><code>{String(data.jobId)}</code></div> : null}
+        {data.jobId ? <div className="ws-kv"><span>{t("tool.job")}</span><code>{String(data.jobId)}</code></div> : null}
       </div>
     </details>
   );
 }
 
 function PlanCard({ steps }: { steps: AgentPlanStep[] }) {
+  const { t } = useTranslation("agent");
   if (!steps.length) return null;
   const done = steps.filter((step) => step.status === "done").length;
   return (
     <div className="ws-plan">
-      <div className="ws-plan-head"><span>执行计划</span><strong>{done} / {steps.length}</strong></div>
+      <div className="ws-plan-head"><span>{t("tool.planTitle")}</span><strong>{done} / {steps.length}</strong></div>
       {steps.map((step) => (
         <div key={step.id} className={`ws-plan-step ${step.status}`}>
           <i>{step.status === "done" ? "✓" : step.status === "failed" ? "!" : ""}</i>
           <span>{step.label}</span>
-          <em>{step.note || (step.status === "running" ? "进行中" : step.status === "pending" ? "待执行" : "")}</em>
+          <em>{step.note || (step.status === "running" ? t("tool.stepRunning") : step.status === "pending" ? t("tool.stepPending") : "")}</em>
         </div>
       ))}
     </div>
@@ -152,6 +157,7 @@ function PlanCard({ steps }: { steps: AgentPlanStep[] }) {
 }
 
 function Outputs({ outputs }: { outputs: MediaAsset[] }) {
+  const { t } = useTranslation("agent");
   if (!outputs.length) return null;
   return (
     <div className="ws-outputs">
@@ -161,13 +167,13 @@ function Outputs({ outputs }: { outputs: MediaAsset[] }) {
             <video src={output.url} poster={output.thumbnailUrl} controls playsInline preload="metadata" />
             <div className="ws-output-meta">
               <span>{output.width}×{output.height} · {(output.durationSec || 0).toFixed(1)}s</span>
-              <a href={output.url} download>下载 MP4</a>
+              <a href={output.url} download>{t("tool.downloadMp4")}</a>
             </div>
           </div>
         ) : (
           <a className="ws-output-image" key={output.id} href={output.url} target="_blank" rel="noreferrer">
-            <img src={output.url} alt="生成结果" />
-            <span>{output.width}×{output.height} · 下载</span>
+            <img src={output.url} alt={t("tool.outputs")} />
+            <span>{output.width}×{output.height} · {t("tool.download")}</span>
           </a>
         )
       )}
@@ -176,6 +182,8 @@ function Outputs({ outputs }: { outputs: MediaAsset[] }) {
 }
 
 export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToStudio, onOpenApi, toast }: Props) {
+  const { t } = useTranslation("agent");
+  const { t: tBase } = useTranslation("base");
   const studio = useStudio();
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -184,7 +192,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
   const [query, setQuery] = useState("");
   const [input, setInput] = useState("");
   const [running, setRunning] = useState(false);
-  const [stage, setStage] = useState("Agent 已就绪");
+  const [stage, setStage] = useState<string>(() => i18n.t("statusReady", { ns: "agent" }));
   const [plan, setPlan] = useState<AgentPlanStep[]>([]);
   const [tools, setTools] = useState<AgentToolState[]>([]);
   const [progress, setProgress] = useState<{ progress: number; stage: string } | null>(null);
@@ -199,7 +207,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
   const openStoryboard = () => {
     studio.openStoryboard();
     onBackToStudio();
-    toast("已打开分镜表", "success");
+    toast(t("storyboardOpened"), "success");
   };
 
   const subscribe = (sessionId: string) => {
@@ -252,7 +260,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
           case "done":
             setSession(event.session);
             setRunning(false);
-            setStage("Agent 已就绪");
+            setStage(t("statusReady"));
             closeRef.current?.();
             closeRef.current = null;
             void api.agentSessions(projectId).then((list) => setSessions(list.items)).catch(() => undefined);
@@ -283,7 +291,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
       setSession(detail.session);
       setMessages(detail.messages);
       setRunning(detail.session.status === "running");
-      setStage(detail.session.status === "running" ? "Agent 正在执行" : "Agent 已就绪");
+      setStage(detail.session.status === "running" ? t("statusRunning") : t("statusReady"));
       if (detail.session.status === "running") subscribe(id);
       else {
         closeRef.current?.();
@@ -348,7 +356,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
     setPlan([]);
     setProgress(null);
     setRunning(true);
-    setStage("正在理解任务");
+    setStage(t("statusThinking"));
     const optimistic: AgentMessage = {
       id: `temp_${Date.now()}`,
       sessionId: activeId,
@@ -366,7 +374,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
       subscribe(activeId);
     } catch (err) {
       setRunning(false);
-      setStage("Agent 已就绪");
+      setStage(t("statusReady"));
       setError((err as Error).message);
       toast((err as Error).message);
     }
@@ -374,7 +382,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
 
   const cancel = async () => {
     if (!activeId) return;
-    setStage("正在取消…");
+    setStage(t("statusCanceling"));
     try {
       await api.cancelAgent(activeId);
     } catch (err) {
@@ -403,7 +411,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
 
   const openSession = async (id: string) => {
     if (running) {
-      toast("当前会话正在执行，请先等待或取消");
+      toast(tBase("error"));
       return;
     }
     setActiveId(id);
@@ -425,28 +433,28 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
   const doneSteps = effectivePlan.filter((step) => step.status === "done").length;
   const usagePercent = Math.min(100, Math.round(((session?.tokens || 0) / 128_000) * 100));
   const latestOutputs = lastAssistant?.data?.outputs || [];
-  const title = session?.title || "新会话";
+  const title = session?.title || tBase("create");
 
   return (
     <main className="workspace-page" hidden={hidden}>
-      <aside className="ws-sessions" aria-label="会话列表">
+      <aside className="ws-sessions" aria-label={t("sessionsLabel")}>
         <div className="ws-brand">
-          <div><span className="eyebrow">WORKSPACE</span><h2>{project?.name || "本地项目"}</h2></div>
-          <button className="ws-new" title="新建会话" aria-label="新建会话" onClick={() => void newSession()}><Plus size={15} /></button>
+          <div><span className="eyebrow">WORKSPACE</span><h2>{project?.name || t("localProject")}</h2></div>
+          <button className="ws-new" title={t("newSession")} aria-label={t("newSessionAria")} onClick={() => void newSession()}><Plus size={15} /></button>
         </div>
         <div className="ws-workspace-switch">
           <span className="ws-workspace-mark">P</span>
-          <div><strong>{project?.name || "本地项目"}</strong><small>{online ? "SQLite · 本地工作区" : "BFF 未连接"} · {sessions.length} 个会话</small></div>
+          <div><strong>{project?.name || t("localProject")}</strong><small>{online ? t("storageOnline") : t("storageOffline")} · {t("sessionCount", { count: sessions.length })}</small></div>
           <ChevronDown size={13} />
         </div>
         <label className="ws-search">
           <Search size={13} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索会话" aria-label="搜索会话" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} aria-label={t("searchAria")} />
           <kbd>⌘K</kbd>
         </label>
 
         <div className="ws-session-scroll">
-          <div className="ws-section-label"><span>会话</span><em>{filtered.length}</em></div>
+          <div className="ws-section-label"><span>{t("sessions")}</span><em>{filtered.length}</em></div>
           {filtered.map((item) => (
             <button
               key={item.id}
@@ -456,58 +464,58 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
               <span className={`ws-session-dot ${item.status === "running" ? "is-running" : ""}`} />
               <span className="ws-session-body">
                 <strong title={item.title}>{item.title}</strong>
-                <small>{item.status === "running" ? "执行中" : `${item.messageCount} 条消息`} · {compact(item.tokens)} tokens</small>
+                <small>{item.status === "running" ? t("running") : t("messages", { count: item.messageCount })} · {compact(item.tokens)} tokens</small>
               </span>
               <time>{relative(item.updatedAt)}</time>
             </button>
           ))}
           {filtered.length === 0 && (
             <div className="ws-session-empty">
-              <p>{online ? "还没有会话" : "BFF 未启动，无法读取会话"}</p>
-              {online && <button className="text-btn" onClick={() => void newSession()}>新建会话 <ArrowRight size={12} /></button>}
+              <p>{online ? t("emptyOnline") : t("emptyOffline")}</p>
+              {online && <button className="text-btn" onClick={() => void newSession()}>{t("createFirst")} <ArrowRight size={12} /></button>}
             </div>
           )}
         </div>
 
         <div className="ws-sessions-foot">
-          <div className="ws-usage"><span>本工作区</span><strong>{compact(sessions.reduce((sum, item) => sum + item.tokens, 0))} <small>tokens</small></strong></div>
-          <button className="ws-settings-btn" onClick={onOpenApi}><Settings2 size={13} />API 设置</button>
+          <div className="ws-usage"><span>{t("workspaceTokens")}</span><strong>{compact(sessions.reduce((sum, item) => sum + item.tokens, 0))} <small>tokens</small></strong></div>
+          <button className="ws-settings-btn" onClick={onOpenApi}><Settings2 size={13} />{t("apiSettings")}</button>
         </div>
       </aside>
 
-      <section className="ws-main" aria-label="会话">
+      <section className="ws-main" aria-label={t("mainLabel")}>
         <header className="ws-head">
           <div className="ws-head-title">
             <span className="eyebrow">SESSION / {session ? session.id.slice(-6).toUpperCase() : "NEW"}</span>
             <div className="ws-title-row">
               <h1 title={title}>{title}</h1>
-              <span className={`ws-agent-status ${running ? "is-running" : ""}`}><i />{running ? stage : "Agent 已就绪"}</span>
+              <span className={`ws-agent-status ${running ? "is-running" : ""}`}><i />{running ? stage : t("statusReady")}</span>
             </div>
           </div>
           <div className="ws-head-actions">
-            <button className="ws-back" onClick={onBackToStudio}><ArrowLeft size={12} />创作台</button>
+            <button className="ws-back" onClick={onBackToStudio}><ArrowLeft size={12} />{t("backToStudio")}</button>
             <span className="ws-model-chip"><span className="ws-model-dot" />local-agent <ChevronDown size={10} /></span>
-            <span className="ws-context-chip" title={`会话累计 ${session?.tokens || 0} tokens`}><i style={{ ["--p" as string]: usagePercent }} />{usagePercent}%</span>
-            <button className="ghost-icon" aria-label="更多" onClick={() => toast("会话重命名 / 删除将在下一阶段接入")}><MoreHorizontal size={14} /></button>
+            <span className="ws-context-chip" title={t("contextChipTitle", { count: session?.tokens || 0 })}><i style={{ ["--p" as string]: usagePercent }} />{usagePercent}%</span>
+            <button className="ghost-icon" aria-label={t("moreAria")} onClick={() => toast(t("moreToast"))}><MoreHorizontal size={14} /></button>
           </div>
         </header>
 
         <div className="ws-thread" ref={threadRef}>
-          <div className="ws-date"><span>{online ? "SQLite 持久化会话 · 工具真实执行" : "BFF 未连接"}</span></div>
+          <div className="ws-date"><span>{online ? t("dateLineOnline") : t("dateLineOffline")}</span></div>
 
           {!activeId && (
             <div className="ws-empty">
               <span className="ws-empty-mark">✦</span>
-              <h3>{online ? "还没有会话" : "无法连接本机 BFF"}</h3>
+              <h3>{online ? t("emptyTitleOnline") : t("emptyTitleOffline")}</h3>
               <p>
                 {online
-                  ? "新建会话后，用一句话描述任务。Agent 会读取项目素材，自动选择生图、生视频或图组视频工具，并给出计划、调用工具、等待真实任务完成。"
-                  : "运行 npm run dev:all 启动 BFF 后刷新页面。Agent 会话、消息与工具事件都存储在 SQLite。"}
+                  ? t("emptyBodyOnline")
+                  : t("emptyBodyOffline")}
               </p>
               {online && (
                 <div className="ws-empty-hints">
-                  <span onClick={() => void newSession()}>新建会话</span>
-                  <span>试试：用这 2 张图做 3 镜图组视频，竖屏 720p</span>
+                  <span onClick={() => void newSession()}>{t("createFirst")}</span>
+                  <span>{t("tryPrefix")}{t("exampleMulti")}</span>
                 </div>
               )}
             </div>
@@ -516,11 +524,11 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
           {activeId && messages.length === 0 && !running && (
             <div className="ws-empty">
               <span className="ws-empty-mark">✦</span>
-              <h3>新会话已创建</h3>
-              <p>描述你想完成的任务。Agent 会读取项目素材，自动选择生图、生视频或分镜工具，并在执行前给出计划。</p>
+              <h3>{t("newTitle")}</h3>
+              <p>{t("newBody")}</p>
               <div className="ws-empty-hints">
-                <span onClick={() => setInput("用这 2 张图做 3 镜图组视频，竖屏，每镜 2 秒，720p，10 Mbps")}>把这组图做成图组视频</span>
-                <span onClick={() => setInput("生成一张 2K 电影静帧，雾中玻璃与琥珀光")}>生成 2K 电影静帧</span>
+                <span onClick={() => setInput(t("example1Full"))}>{t("example1")}</span>
+                <span onClick={() => setInput(t("example2Full"))}>{t("example2")}</span>
               </div>
             </div>
           )}
@@ -529,7 +537,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
             if (message.role === "user") {
               return (
                 <article key={message.id} className="ws-msg ws-user">
-                  <div className="ws-msg-meta"><span>你</span><time>{clock(message.createdAt)}</time></div>
+                  <div className="ws-msg-meta"><span>{t("you")}</span><time>{clock(message.createdAt)}</time></div>
                   <div className="ws-bubble">{message.text}</div>
                 </article>
               );
@@ -553,13 +561,13 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
                   <Outputs outputs={data.outputs || []} />
                   <div className="ws-msg-actions">
                     {(data.actions || []).includes("open_storyboard") && (
-                      <button className="ws-inline-action" onClick={openStoryboard}>打开分镜表 <ArrowRight size={12} /></button>
+                      <button className="ws-inline-action" onClick={openStoryboard}>{t("openStoryboard")} <ArrowRight size={12} /></button>
                     )}
                     {(data.actions || []).includes("open_studio") && (
-                      <button className="ws-inline-action" onClick={onBackToStudio}>在创作台查看 <ArrowRight size={12} /></button>
+                      <button className="ws-inline-action" onClick={onBackToStudio}>{t("viewInStudio")} <ArrowRight size={12} /></button>
                     )}
                     {(data.actions || []).includes("open_api") && (
-                      <button className="ws-inline-action" onClick={onOpenApi}>打开 API 设置 <ArrowRight size={12} /></button>
+                      <button className="ws-inline-action" onClick={onOpenApi}>{t("openApi")} <ArrowRight size={12} /></button>
                     )}
                   </div>
                 </div>
@@ -571,9 +579,9 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
             <article className="ws-msg ws-assistant">
               <div className="ws-avatar">L</div>
               <div className="ws-msg-body">
-                <div className="ws-msg-meta"><span>LUMEN Agent</span><time>刚刚</time><em>{stage}</em></div>
+                <div className="ws-msg-meta"><span>{t("botName")}</span><time>{tBase("justNow")}</time><em>{stage}</em></div>
                 {tools.length === 0 && (
-                  <div className="ws-typing-line"><i /><i /><i /><span>正在检查素材与工具…</span></div>
+                  <div className="ws-typing-line"><i /><i /><i /><span>{t("checkingAssets")}</span></div>
                 )}
                 {tools.map((tool) => (
                   <ToolCard key={tool.id} tool={tool} onOpenStoryboard={openStoryboard} />
@@ -585,10 +593,10 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
                       <span className="ws-tool-icon running"><RefreshCw size={13} /></span>
                       <span className="ws-tool-name"><strong>media.generate</strong><small>{progress.stage}</small></span>
                       <span className="ws-tool-status running">{progress.progress}%</span>
-                      <button className="text-btn" onClick={() => void cancel()}>取消</button>
+                      <button className="text-btn" onClick={() => void cancel()}>{tBase("cancel")}</button>
                     </div>
                     <div className="ws-progress"><i style={{ width: `${progress.progress}%` }} /></div>
-                    <div className="ws-progress-meta"><span>任务在 BFF 后台执行</span><span>可在后台继续</span></div>
+                    <div className="ws-progress-meta"><span>{t("progressNote")}</span><span>{t("progressHint")}</span></div>
                   </div>
                 )}
                 {error && <p className="ws-error-line">{error}</p>}
@@ -609,68 +617,68 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
                 }
               }}
               rows={2}
-              placeholder={running ? "Agent 正在执行，可取消或等待完成…" : "描述任务，例如：把这 2 张图做成 3 镜竖屏图组视频，720p，10 Mbps"}
+              placeholder={running ? t("composerRunning") : t("composerPlaceholder")}
             />
             <div className="ws-composer-tools">
               <div className="ws-composer-left">
-                <button className="ws-chip" onClick={() => toast(`项目素材 ${assets.length} 张，可直接在提示词中引用`)}>
-                  <Paperclip size={11} />素材 {assets.length}
+                <button className="ws-chip" onClick={() => toast(t("chipAssetsToast", { count: assets.length }))}>
+                  <Paperclip size={11} />{t("chipAssets", { count: assets.length })}
                 </button>
-                <button className="ws-chip" onClick={() => toast("可用工具：workspace.inspect / storyboard.plan / media.generate / ffmpeg.compose")}>
-                  <Wrench size={11} />工具
+                <button className="ws-chip" onClick={() => toast(t("chipToolsToast"))}>
+                  <Wrench size={11} />{t("chipTools")}
                 </button>
-                <button className="ws-chip" onClick={() => void newSession()}><Plus size={11} />新会话</button>
+                <button className="ws-chip" onClick={() => void newSession()}><Plus size={11} />{t("newSession")}</button>
               </div>
               <div className="ws-composer-right">
                 <span className="ws-context-hint"><i />{compact(session?.tokens || 0)} / 128k</span>
                 {running ? (
-                  <button className="ws-send ws-stop" onClick={() => void cancel()} aria-label="取消执行">■</button>
+                  <button className="ws-send ws-stop" onClick={() => void cancel()} aria-label={t("cancelAria")}>■</button>
                 ) : (
-                  <button className="ws-send" onClick={() => void send()} aria-label="发送消息"><ArrowRight size={15} /></button>
+                  <button className="ws-send" onClick={() => void send()} aria-label={t("sendAria")}><ArrowRight size={15} /></button>
                 )}
               </div>
             </div>
           </div>
-          <div className="ws-composer-hint">Enter 发送 · Shift + Enter 换行 · 工具真实调用 BFF 任务队列</div>
+          <div className="ws-composer-hint">{t("hint")}</div>
         </div>
 
         <footer className="ws-statusbar">
-          <span className="ws-status-left"><i className="ws-status-live" />本地工作区</span>
+          <span className="ws-status-left"><i className="ws-status-live" />{t("statusLocal")}</span>
           <span>local-agent</span>
-          <span>{running ? stage : "就绪"}</span>
-          <span>工具 4</span><span>自动批准</span>
+          <span>{running ? stage : t("ready")}</span>
+          <span>{t("tools", { count: 4 })}</span><span>{t("autoApprove")}</span>
           <span className="ws-status-right">LUMEN AGENT · SQLite</span>
         </footer>
       </section>
 
-      <aside className="ws-context" aria-label="上下文">
+      <aside className="ws-context" aria-label={t("contextLabel")}>
         <div className="ws-context-head">
-          <div><span className="eyebrow">CONTEXT</span><h2>上下文</h2></div>
-          <button className="ghost-icon" title="刷新上下文" onClick={() => void loadSessions(activeId)}><RefreshCw size={14} /></button>
+          <div><span className="eyebrow">CONTEXT</span><h2>{t("contextTitle")}</h2></div>
+          <button className="ghost-icon" title={t("refreshAria")} onClick={() => void loadSessions(activeId)}><RefreshCw size={14} /></button>
         </div>
         <div className="ws-context-scroll">
           <section className="ws-context-card ws-context-usage">
             <div className="ws-ring" style={{ ["--p" as string]: usagePercent }}><span>{usagePercent}%</span></div>
             <div className="ws-usage-copy">
-              <strong>{compact(session?.tokens || 0)} <small>/ 128k tokens</small></strong><span>会话累计</span>
+              <strong>{compact(session?.tokens || 0)} <small>/ 128k tokens</small></strong><span>{t("sessionTokens")}</span>
               <div className="ws-usage-bar"><i style={{ width: `${usagePercent}%` }} /></div>
-              <div className="ws-usage-split"><span>{session?.messageCount || messages.length} 条消息</span><span>{sessions.length} 个会话</span></div>
+              <div className="ws-usage-split"><span>{t("contextSplit", { messages: session?.messageCount || messages.length, sessions: sessions.length })}</span></div>
             </div>
           </section>
           <section className="ws-context-section">
-            <div className="ws-context-section-head"><h3>会话目标</h3></div>
+            <div className="ws-context-section-head"><h3>{t("goal")}</h3></div>
             <div className="ws-goal">
               <div className="ws-goal-top"><span className="ws-goal-dot" /><strong>{title}</strong></div>
-              <p>{effectivePlan.length ? `${doneSteps} / ${effectivePlan.length} 步完成` : "等待任务描述"}</p>
+              <p>{effectivePlan.length ? t("stepsDone", { done: doneSteps, total: effectivePlan.length }) : t("goalEmpty")}</p>
               <div className="ws-goal-bar"><i style={{ width: `${effectivePlan.length ? Math.round((doneSteps / effectivePlan.length) * 100) : 0}%` }} /></div>
               <div className="ws-goal-meta">
-                <span>{running ? "执行中" : lastAssistant ? "已完成" : "待开始"}</span>
+                <span>{running ? t("state.running") : lastAssistant ? t("state.done") : t("state.pending")}</span>
                 <span>{effectivePlan.length ? `${Math.round((doneSteps / effectivePlan.length) * 100)}%` : "0%"}</span>
               </div>
             </div>
           </section>
           <section className="ws-context-section">
-            <div className="ws-context-section-head"><h3>工具</h3><span className="ws-auto"><i />自动批准</span></div>
+            <div className="ws-context-section-head"><h3>{t("toolsTitle")}</h3><span className="ws-auto"><i />{t("autoApprove")}</span></div>
             <div className="ws-tool-list">
               {(effectiveTools.length
                 ? effectiveTools
@@ -690,7 +698,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
             </div>
           </section>
           <section className="ws-context-section">
-            <div className="ws-context-section-head"><h3>工作区文件</h3><span>{assets.length + latestOutputs.length}</span></div>
+            <div className="ws-context-section-head"><h3>{t("workspaceFiles")}</h3><span>{assets.length + latestOutputs.length}</span></div>
             <div className="ws-file-list">
               {assets.slice(0, 3).map((asset) => (
                 <div key={asset.id}>
@@ -707,20 +715,20 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
                 </div>
               ))}
               {assets.length === 0 && latestOutputs.length === 0 && (
-                <div><span className="ws-file-icon img" /><span>暂无文件</span><em>—</em></div>
+                <div><span className="ws-file-icon img" /><span>{t("noFiles")}</span><em>—</em></div>
               )}
             </div>
           </section>
           <section className="ws-context-section">
-            <div className="ws-context-section-head"><h3>运行环境</h3></div>
+            <div className="ws-context-section-head"><h3>{t("runtime")}</h3></div>
             <div className="ws-env">
               <div><span>Provider</span><code>{system?.activeProviderId || "—"}</code></div>
-              <div><span>编码</span><code>{system?.ffmpeg?.available ? "FFmpeg 可用" : "FFmpeg 未检测"}</code></div>
-              <div><span>存储</span><code>sqlite · ./data</code></div>
+              <div><span>{t("ffmpeg")}</span><code>{system?.ffmpeg?.available ? t("ffmpegOk") : t("ffmpegMissing")}</code></div>
+              <div><span>{t("storageLabel")}</span><code>sqlite · ./data</code></div>
             </div>
           </section>
         </div>
-        <div className="ws-context-foot"><span><i />127.0.0.1 · 本地</span><button onClick={onOpenApi}>API 设置</button></div>
+        <div className="ws-context-foot"><span><i />{t("localFoot")}</span><button onClick={onOpenApi}>{t("apiSettings")}</button></div>
       </aside>
     </main>
   );

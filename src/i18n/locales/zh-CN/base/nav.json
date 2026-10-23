@@ -1,0 +1,21 @@
+{
+  "workspace": "工作区",
+  "works": "作品库",
+  "assets": "素材库",
+  "models": "API 与模型",
+  "project": "项目",
+  "studio": "创作台",
+  "agent": "Agent 工作区",
+  "allProjects": "全部项目",
+  "autosave": "已保存",
+  "help": "帮助",
+  "helpToast": "帮助文档即将接入",
+  "shortcutsToast": "1–5 切换模式 · ⌘↵ 生成 · ⌘J 打开 Agent 工作区",
+  "tokenTitle": "本会话 {{count}} tokens · 本地会话累计",
+  "localTitle": "本地工作区 · 无需登录",
+  "tokensUnit": "tokens",
+  "mockFallback": "Mock 生成",
+  "mainNav": "主导航",
+  "shortcuts": "快捷键",
+  "breadcrumb": "工作区路径"
+}

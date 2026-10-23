@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowRight, Bot, ImagePlus, RefreshCw, Settings2 } from "lucide-react";
 import type { AgentSession, MediaAsset, ProjectWithStats } from "../../shared/contracts";
 import { api } from "../lib/api";
+import { relativeTime, formatDate } from "../i18n/format";
 import { IMG } from "../data/mock";
 
 interface Props {
@@ -24,6 +26,8 @@ const relative = (iso: string) => {
 };
 
 export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAssets, toast }: Props) {
+  const { t } = useTranslation("project");
+  const { t: tBase } = useTranslation("base");
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -61,7 +65,7 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
         const asset = await api.upload(file, undefined, projectId);
         setAssets((prev) => [asset, ...prev]);
       }
-      toast("素材已写入项目", "success");
+      toast(t("uploadOk"), "success");
       await load();
     } catch (error) {
       toast((error as Error).message);
@@ -78,35 +82,33 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
       <section className="pp-main">
         <header className="pp-hero">
           <div className="pp-cover">
-            <img src={project?.coverUrl || IMG.dunes} alt={`${project?.name || "项目"}封面`} />
+            <img src={project?.coverUrl || IMG.dunes} alt={t("coverAlt", { name: project?.name || t("titleFallback") })} />
             <div className="pp-cover-shade" />
             <span className="pp-badge">PROJECT / SQLITE</span>
             <span className="pp-cover-meta">
-              {stats ? `${stats.generations} 次生成 · ${stats.assets} 素材` : "本地项目"}
+              {stats ? t("heroMeta", { generations: stats.generations, assets: stats.assets }) : t("localProject")}
             </span>
           </div>
           <div className="pp-copy">
             <span className="eyebrow">WORKSPACE / {project?.id?.toUpperCase() || "LOCAL"}</span>
-            <h1>{project?.name || (offline ? "BFF 未启动" : loading ? "加载中…" : "项目")}</h1>
+            <h1>{project?.name || (offline ? tBase("offline") : loading ? t("loadFallback") : t("titleFallback"))}</h1>
             <p>
               {project?.description ||
-                (offline
-                  ? "启动本机 BFF 后即可读取项目、会话与素材。"
-                  : "项目数据从 SQLite 读取。")}
+                (offline ? t("pageDescOffline") : t("pageDescOnline"))}
             </p>
             <div className="pp-stats">
-              <span><strong>{stats?.sessions ?? 0}</strong>会话</span>
-              <span><strong>{stats?.assets ?? 0}</strong>素材</span>
-              <span><strong>{compact(stats?.tokens ?? 0)}</strong>tokens</span>
-              <span><strong>{stats?.generations ?? 0}</strong>生成</span>
+              <span><strong>{stats?.sessions ?? 0}</strong>{t("statSessions")}</span>
+              <span><strong>{stats?.assets ?? 0}</strong>{t("statAssets")}</span>
+              <span><strong>{compact(stats?.tokens ?? 0)}</strong>{t("statTokens")}</span>
+              <span><strong>{stats?.generations ?? 0}</strong>{t("statGenerations")}</span>
             </div>
             <div className="pp-actions">
-              <button className="ws-primary" onClick={onEnterStudio}>进入创作台 <ArrowRight size={14} /></button>
-              <button className="soft-btn" onClick={() => onOpenAgent(latest?.id)}><Bot size={14} /> Agent 工作区</button>
-              <button className="ghost-icon" title="重新读取" aria-label="刷新项目" onClick={() => void load()}>
+              <button className="ws-primary" onClick={onEnterStudio}>{t("enterStudio")} <ArrowRight size={14} /></button>
+              <button className="soft-btn" onClick={() => onOpenAgent(latest?.id)}><Bot size={14} /> {t("agent")}</button>
+              <button className="ghost-icon" title={t("refreshAria")} aria-label={t("refreshAria")} onClick={() => void load()}>
                 <RefreshCw size={14} />
               </button>
-              <button className="ghost-icon" title="项目设置" aria-label="项目设置" onClick={() => toast("项目重命名将在下一阶段接入")}>
+              <button className="ghost-icon" title={t("settingsToast")} aria-label={t("settingsToast")} onClick={() => toast(t("settingsToast"))}>
                 <Settings2 size={14} />
               </button>
             </div>
@@ -116,13 +118,13 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
         <div className="pp-grid">
           <section className="pp-sessions">
             <div className="wh-section-head">
-              <span>最近会话</span>
+              <span>{t("sessionsTitle")}</span>
               <span className="pp-count">{sessions.length}</span>
             </div>
             {sessions.length === 0 && (
               <button className="pp-session pp-session-empty" onClick={() => onOpenAgent()}>
                 <span className="ws-session-dot" />
-                <div><strong>还没有会话</strong><small>进入 Agent 工作区，用一句话描述任务</small></div>
+                <div><strong>{t("sessionsEmpty")}</strong><small>{t("sessionsEmptyHint")}</small></div>
                 <ArrowRight size={13} />
               </button>
             )}
@@ -132,7 +134,7 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
                 <div>
                   <strong>{session.title}</strong>
                   <small>
-                    {session.status === "running" ? "Agent · 执行中" : "Agent · 已就绪"} · {session.messageCount} 条消息
+                    {session.status === "running" ? t("sessionRunning") : t("sessionReady")} · {t("messages", { count: session.messageCount })}
                   </small>
                 </div>
                 <em>{compact(session.tokens)}</em><time>{relative(session.updatedAt)}</time>
@@ -143,20 +145,20 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
           <section className="pp-assets">
             <div className="wh-section-head">
               {onOpenAssets ? (
-                <button className="pp-assets-link" onClick={() => onOpenAssets(projectId)} title="在素材库中打开本项目">
-                  项目素材 <ArrowRight size={11} />
+                <button className="pp-assets-link" onClick={() => onOpenAssets(projectId)} title={t("openAssets")}>
+                  {t("assetsTitle")} <ArrowRight size={11} />
                 </button>
               ) : (
-                <span>项目素材</span>
+                <span>{t("assetsTitle")}</span>
               )}
               <button onClick={() => fileRef.current?.click()} disabled={uploading}>
-                {uploading ? "上传中…" : "添加"} <ImagePlus size={12} />
+                {uploading ? t("uploading") : t("add", { ns: "base" })} <ImagePlus size={12} />
               </button>
             </div>
             <div className="pp-asset-grid">
               {assets.map((asset, index) => (
                 <button key={asset.id} onClick={() => window.open(asset.url, "_blank")}>
-                  <img src={asset.thumbnailUrl || asset.url} alt={`素材 ${index + 1}`} />
+                  <img src={asset.thumbnailUrl || asset.url} alt={t("assetAlt", { index: index + 1 })} />
                   <span>{String(index + 1).padStart(2, "0")}</span>
                 </button>
               ))}
@@ -180,35 +182,35 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
       <aside className="pp-side">
         <div className="wh-side-card">
           <span className="eyebrow">PROJECT</span>
-          <div className="pp-side-row"><span>创建时间</span><strong>{project ? new Date(project.createdAt).toLocaleDateString("zh-CN") : "—"}</strong></div>
-          <div className="pp-side-row"><span>最近编辑</span><strong>{project ? relative(project.updatedAt) : "—"}</strong></div>
-          <div className="pp-side-row"><span>共享</span><strong>仅本地</strong></div>
-          <div className="pp-side-row"><span>存储</span><strong>SQLite</strong></div>
+          <div className="pp-side-row"><span>{t("createdAt")}</span><strong>{project ? formatDate(project.createdAt) : "—"}</strong></div>
+          <div className="pp-side-row"><span>{t("lastEdited")}</span><strong>{project ? relativeTime(project.updatedAt) : "—"}</strong></div>
+          <div className="pp-side-row"><span>{t("share")}</span><strong>{t("shareValue")}</strong></div>
+          <div className="pp-side-row"><span>{t("storage")}</span><strong>{t("storageValue")}</strong></div>
         </div>
         <div className="wh-side-card">
           <span className="eyebrow">NEXT STEP</span>
           <p className="pp-next">
             {latest
               ? latest.status === "running"
-                ? `Agent 正在执行「${latest.title}」，完成后结果会自动写入项目。`
-                : `继续「${latest.title}」，或新建会话描述新任务。`
-              : "进入 Agent 工作区，用一句话生成分镜、图像或成片。"}
+                ? t("nextRunning", { title: latest.title })
+                : t("nextReady", { title: latest.title })
+              : t("nextEmpty")}
           </p>
           <button className="ws-primary pp-small-cta" onClick={() => onOpenAgent(latest?.id)}>
-            {latest ? "继续 Agent 任务" : "开始 Agent 任务"}
+            {latest ? t("continueAgent") : t("startAgent")}
           </button>
         </div>
         <div className="wh-side-card">
           <span className="eyebrow">FILES</span>
           <div className="wh-recent-files">
-            <div><span className="ws-file-icon csv" /><div><strong>lumen.db</strong><small>项目与会话持久化</small></div></div>
+            <div><span className="ws-file-icon csv" /><div><strong>lumen.db</strong><small>{t("filesPersist")}</small></div></div>
             {assets.slice(0, 2).map((asset) => (
               <div key={asset.id}>
                 <span className="ws-file-icon img" />
                 <div><strong>{asset.originalName || asset.id}</strong><small>{Math.round(asset.size / 1024)} KB</small></div>
               </div>
             ))}
-            {assets.length === 0 && <div><span className="ws-file-icon img" /><div><strong>暂无素材</strong><small>在右侧上传</small></div></div>}
+            {assets.length === 0 && <div><span className="ws-file-icon img" /><div><strong>{t("filesNone")}</strong><small>{t("filesHint")}</small></div></div>}
           </div>
         </div>
       </aside>

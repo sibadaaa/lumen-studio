@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Search, X } from "lucide-react";
 import type { LibraryAsset } from "../../shared/contracts";
 import { api } from "../lib/api";
@@ -14,6 +15,7 @@ interface Props {
 
 /** Modal picker that fills a library asset into the studio without re-upload. */
 export function AssetPickerDialog({ open, onClose, onPick, projectId }: Props) {
+  const { t } = useTranslation("assets");
   const [search, setSearch] = useState("");
   const [items, setItems] = useState<LibraryAsset[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,8 +48,8 @@ export function AssetPickerDialog({ open, onClose, onPick, projectId }: Props) {
         <header className="modal-head">
           <div>
             <span className="eyebrow">ASSETS</span>
-            <h2>从素材库选择</h2>
-            <p>选择一张素材填入当前模式，不会重复上传。</p>
+            <h2>{t("picker.title")}</h2>
+            <p>{t("picker.desc")}</p>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="关闭"><X size={15} /></button>
         </header>
@@ -57,13 +59,13 @@ export function AssetPickerDialog({ open, onClose, onPick, projectId }: Props) {
             autoFocus
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索文件名、标签…"
-            aria-label="搜索素材"
+            placeholder={t("searchPlaceholder")}
+            aria-label={t("searchPlaceholder")}
           />
         </div>
         <div className="asset-picker-grid">
-          {loading && <p className="library-loading">正在读取素材…</p>}
-          {!loading && grid.length === 0 && <p className="library-loading">素材库还没有可用素材。</p>}
+          {loading && <p className="library-loading">{t("picker.loading")}</p>}
+          {!loading && grid.length === 0 && <p className="library-loading">{t("picker.empty")}</p>}
           {grid.map((asset) => (
             <button key={asset.id} className="asset-picker-item" onClick={() => { onPick(asset); onClose(); }}>
               <img src={asset.thumbnailUrl || asset.url} alt={asset.originalName || asset.id} loading="lazy" />
