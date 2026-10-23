@@ -37,12 +37,12 @@
 
 ### 1.3 非目标（v1）
 
-- 不做更多语言（日/韩等）；字典结构预留扩展位。
+- 不做更多语言的内容生产（日/韩等）；但架构按「语言 = 文件夹、页面 = 命名空间」组织，**新增语言只需新增目录并注册一行**（见 §5.7）。
 - 不做 RTL 布局。
 - **不做服务端 i18n**：BFF 的 `error.message` 保持中文兜底，客户端按 `error.code` 本地化（见 §5.4）；API 契约不变。
 - 不翻译：用户提示词、项目名/描述、素材文件名、模型 ID、Agent 会话内容、mock 里的**默认提示词**（属于示例内容）。
 - 不做账号级偏好同步（本地单用户，`localStorage` 即持久层）。
-- 不引入 react-i18next / ICU 等运行时依赖（理由见施工图 §0）。
+- i18n 库使用 **react-i18next / i18next**（已确认允许安装，为后续多语言扩展预留）；不额外引入 `i18next-http-backend`、`i18next-browser-languageDetector` 等插件（本地静态资源 + 自定义 3 行检测即可）。
 
 ## 2. 产品定义
 
@@ -94,8 +94,8 @@
 | --- | --- |
 | 首次语言 | 无存储时按 `navigator.language`：以 `zh` 开头 → `zh-CN`，否则 → `en` |
 | 切换 | popover 单选，即时生效；`<html lang>` 与 `document.title` 同步 |
-| 回退 | key 缺失在类型层禁止（英文字典必须与中文字典同构）；运行时兜底返回 zh 值 |
-| 复数 | 中文不变形；英文需要处用 `.one` 变体键（如 `works.countOne`），渲染层按 `count === 1` 选择 |
+| 回退 | 命名空间缺 key 运行时回退 `fallbackLng=zh-CN`；类型层通过 `CustomTypeOptions` 约束 en 与 zh 同构 |
+| 复数 | 使用 i18next 内建 Intl 复数规则：`key_one` / `key_other`（中文不变形，只写 `key_other` 或无后缀） |
 
 ## 3. 持久化与初始化
 
@@ -217,17 +217,47 @@ React 挂载
 | 获取模型 | Fetch models | |
 | 暗房 | Darkroom | 仅品牌语境 |
 
-### 5.2 Key 命名与组织
+### 5.2 目录组织与 Key 命名
+
+**以语言为单位建文件夹；语言内以页面为维度建文件夹；跨页面公共文案放 `base/`。**
 
 ```text
-模块.区块.条目
-nav.studio / topbar.tokens.title / studio.inspector.aspectRatio
-works.empty.title / assets.tag.limit / models.sync.button
-errors.PROVIDER_AUTH_FAILED
+src/i18n/
+├── index.tsx                  # i18next 初始化 + I18nextProvider（useTranslation/useLocale 再导出）
+├── config.ts                  # lng/fallback/命名空间/插值 配置
+└── locales/
+    ├── zh-CN/                 # ← 语言为单位
+    │   ├── index.ts           # 聚合本语言全部命名空间 → resources
+    │   ├── base/              # ← 公共部分（跨页面）
+    │   │   ├── common.json    #   保存/取消/删除/重试/加载中…
+    │   │   ├── nav.json       #   rail/面包屑/顶栏
+    │   │   ├── errors.json    #   BFF 错误码文案
+    │   │   └── settings.json  #   偏好弹层
+    │   ├── workspace/page.json
+    │   ├── project/page.json
+    │   ├── studio/            # ← 页面为维度
+    │   │   ├── composer.json
+    │   │   ├── inspector.json
+    │   │   ├── stage.json
+    │   │   ├── history.json
+    │   │   └── storyboard.json
+    │   ├── agent/page.json
+    │   ├── api/page.json      # API 连接弹窗
+    │   ├── models/page.json
+    │   ├── works/page.json
+    │   └── assets/page.json
+    └── en/                    # 与 zh-CN 同构（缺目录=缺翻译，dev 控制台列出）
+        ├── index.ts
+        ├── base/…
+        ├── studio/…
+        └── …（与 zh-CN 一一对应）
 ```
 
-- 插值：`t("works.count", { count })`，字典写 `"{count} 件作品"` / `"{count} works"`；复数用 `.one` 变体。
-- 字典文件：`zh-CN.ts` 为唯一来源（source of truth），`en.ts` 以 `type Dict = typeof zhCN` 约束——**缺 key / 多 key 直接 typecheck 失败**。
+- **命名空间 = 页面（或 base）**：`useTranslation("works")` 后组件内直接 `t("empty.title")`；跨页取用 `t("base:common.save")`。聚合规则：单文件页面（`page.json`）展开为页面命名空间；多文件页面（如 `studio/`）以文件名为二级命名空间（`studio.inspector`）。
+- 文件内 key 用驼峰短语，不重复命名空间前缀（`works/page.json` 里写 `empty.title` 而非 `works.empty.title`）。
+- `base/errors.json` 以错误码为大写键（`PROVIDER_AUTH_FAILED`）。
+- 页面内可再拆文件（如 `studio/` 五个）避免单文件过长；一个页面一个 json 也允许（`works/page.json`）。
+- **新增一门语言（三步）**：① 复制 `locales/zh-CN/` 为 `locales/<lang>/` 并翻译；② 在 `locales/<lang>/index.ts` 聚合（复制 zh 同构骨架）；③ 在 `config.ts` 的 `SUPPORTED_LANGUAGES` 注册。缺译条目运行时回退 zh-CN，`missingKeyHandler` 在 dev 控制台列出清单；类型层通过 `CustomTypeOptions` 让编辑器直接提示 key。
 
 ### 5.3 日期、数字与 tokens
 
@@ -260,22 +290,35 @@ BFF 返回 { code, message(中文兜底), retryable }
 | mock 的默认提示词（DEFAULT_PROMPTS） | 原样（示例内容）；但 `cta/eta/modelDesc/tags` 等 UI 文案迁入字典 |
 | 服务端日志、traceId | 原样 |
 
-### 5.6 文案示例（中 / 英）
+### 5.6 文案示例（中 / 英，含命名空间用法）
 
-| Key | zh-CN | en |
-| --- | --- | --- |
-| `topbar.api.connected` | 已连接 · {provider} | Connected · {provider} |
-| `studio.cta.image` | 生成图像 | Generate image |
-| `studio.inspector.aspectRatio` | 画面比例 | Aspect ratio |
-| `works.empty.title` | 还没有作品 | No works yet |
-| `works.empty.body` | 去创作台生成第一张图或第一段视频。 | Head to the studio to create your first image or clip. |
-| `works.count` | {count} 件作品 | {count} works |
-| `works.countOne` | 1 件作品 | 1 work |
-| `assets.dropzone` | 拖拽图片到这里上传 · 支持 PNG / JPEG / WebP | Drop images here · PNG / JPEG / WebP |
-| `models.sync.done` | 已更新模型目录 · 新增 {added}，更新 {updated} | Catalog updated · {added} added, {updated} updated |
-| `errors.MODEL_MODE_UNSUPPORTED` | 当前模型不支持该生成模式，请更换模型 | The selected model doesn't support this mode. Pick another model. |
-| `settings.title` | 偏好设置 | Preferences |
-| `settings.theme.system` | 跟随系统 | Follow system |
+组件内：`const { t } = useTranslation("works")` 后 `t("empty.title")`；`useTranslation("base")` 后 `t("common.save")`。
+
+| 文件（命名空间） | Key | zh-CN | en |
+| --- | --- | --- | --- |
+| `base/nav.json` | `api.connected` | 已连接 · {{provider}} | Connected · {{provider}} |
+| `base/common.json` | `count`（配 `count_one`） | {{count}} 件作品 | {{count}} work(s) |
+| `studio/inspector.json` | `aspectRatio` | 画面比例 | Aspect ratio |
+| `studio/composer.json` | `cta.image` | 生成图像 | Generate image |
+| `works/page.json` | `empty.title` | 还没有作品 | No works yet |
+| `works/page.json` | `empty.body` | 去创作台生成第一张图或第一段视频。 | Head to the studio to create your first image or clip. |
+| `assets/page.json` | `dropzone` | 拖拽图片到这里上传 · 支持 PNG / JPEG / WebP | Drop images here · PNG / JPEG / WebP |
+| `models/page.json` | `sync.done` | 已更新模型目录 · 新增 {{added}}，更新 {{updated}} | Catalog updated · {{added}} added, {{updated}} updated |
+| `base/errors.json` | `MODEL_MODE_UNSUPPORTED` | 当前模型不支持该生成模式，请更换模型 | The selected model doesn't support this mode. Pick another model. |
+| `base/settings.json` | `title` | 偏好设置 | Preferences |
+| `base/settings.json` | `theme.system` | 跟随系统 | Follow system |
+
+> i18next 插值语法为 `{{param}}`；复数后缀 `_one/_other` 由 Intl 规则自动选择。
+
+### 5.7 面向多语言扩展的约定
+
+| 约定 | 说明 |
+| --- | --- |
+| 语言 = 文件夹 | `locales/<lang>/`；`<lang>` 使用 BCP-47（`zh-CN`、`en`、后续 `ja`、`de`…） |
+| 页面 = 命名空间 = 子文件夹 | 新页面新增 `locales/<lang>/<page>/`；`base` 永远存在 |
+| 注册点唯一 | `config.ts` 的 `SUPPORTED_LANGUAGES` 数组 + 偏好弹层自动按它渲染语言选项 |
+| 缺译策略 | 运行时回退 zh-CN；dev 控制台 `missingKeyHandler` 输出清单；翻译完成后清空 |
+| 日期/数字 | `Intl` 按 `locale` 自动适配新语言，无需改格式代码 |
 
 ## 6. 交互细节
 
@@ -320,7 +363,8 @@ BFF 返回 { code, message(中文兜底), retryable }
 
 1. 英文默认值：无存储且浏览器为英文环境时直接 `en`（本方案），还是始终先 `zh-CN`？
 2. 顶栏是否需要独立的太阳/月亮快捷键（本方案有，循环三态），还是只保留 popover？
-3. 英文字典是否需要懒加载（`import()`）以省 ~15KB gzip？（本方案静态打包，代价可忽略）
+3. 语言包加载：首版全量静态打包（本方案，两语言 gzip ~10KB）；后续语言多了再按语言 `import()` 懒加载，架构已预留。
 4. Agent 工具卡中的**工具名**（`media.generate` 等）保持英文原名不翻译（本方案），是否同意？
 5. 浅色主题的 `--accent` 用深琥珀 `#A96A22`（文本对比达标）而非亮琥珀，是否接受视觉变化？
 6. 语言切换是否需要出现在左侧导航底部（当前仅顶栏）？
+7. 新语言的内容翻译由谁产出（机翻初稿 + 人工校对 / 直接人工）？流程不影响架构。

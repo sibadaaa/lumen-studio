@@ -11,16 +11,18 @@
 
 | 决策 | 选择 | 理由 |
 | --- | --- | --- |
-| i18n 方案 | **手写极简 i18n**（Context + 类型化字典），不引入 react-i18next | 项目一贯零运行时依赖（无 Router/Query/Zod 前端库）；需求只有 2 语言、纯静态字典，i18next 的运行时开销与抽象无收益 |
-| 字典类型 | `zh-CN.ts` 为 source of truth；`en.ts: Dict = typeof zhCN` | 缺 key/多 key 在 `tsc` 阶段报错，无需额外测试 |
-| 插值 | `{name}` 占位 + `t(key, params)` 字符串替换 | 覆盖全部现有文案；不需要 ICU 复数（用 `.one` 变体键） |
+| i18n 方案 | **react-i18next + i18next**（已确认允许安装依赖；为后续多语言扩展预留） | 标准生态：命名空间、内建 Intl 复数、`CustomTypeOptions` 类型安全、缺 key 回退与开发期提示都是现成能力 |
+| 目录组织 | **语言 = 文件夹，页面 = 命名空间 = 子文件夹，公共放 `base/`**（用户指定） | 新增语言 = 复制目录 + 翻译 + 注册一行；页面文案边界清晰 |
+| 语言资源 | `locales/<lang>/**/*.{json}` + 每语言 `index.ts` 聚合；静态打包 | 本地单用户、语言包小；后续多语言可切 `import()` 懒加载，结构不变 |
+| key 类型安全 | i18next `CustomTypeOptions`（`resources` 由 zh-CN 聚合推导） | 编辑器提示 key；缺 key 在 `tsc` 报错；en 缺译运行时回退 zh-CN |
+| 插值与复数 | i18next 内建：`{{param}}`、`_one/_other`（Intl.PluralRules） | 不手写复数逻辑 |
 | 主题方案 | CSS 变量重映射 + `html[data-theme]` + `meta color-scheme` | 与现有 token 体系同构；组件零改动 |
 | 主题持久化 | `localStorage["lumen.theme"]`（system/light/dark） | 本地单用户 |
 | 防闪烁 | `index.html` `<head>` 内联脚本，在 React 之前 resolve 并写 `data-theme`/`color-scheme`/`lang` | 否则浅色系统用户每次进入闪暗屏 |
 | 服务端 | **零改动**：错误按 `error.code` 客户端本地化，`message` 作兜底 | API 契约不变；避免 locale 协商与测试面扩大 |
 | 硬编码颜色 | 先补齐语义 token（★ 组），再按区块把 `rgba()/hex` 替换为 `var()` | 浅色主题=只覆盖令牌；`styles.css` 共 473 处 rgba / 364 处 hex |
 | 媒体区 | `--media-bg` 固定深底，不随主题翻转 | 看片惯例（设计稿 §4.4） |
-| 测试 | typecheck（字典同构）+ build + grep 守卫 + DOM 断言；无截图 | 遵循 [AGENTS.md](../AGENTS.md) |
+| 测试 | typecheck（key 类型）+ build + grep 守卫 + DOM 断言；无截图 | 遵循 [AGENTS.md](../AGENTS.md) |
 
 **核心原则：主题只动令牌与 DOM 属性，i18n 只动字符串出口；两者都不触碰 BFF、契约与生成链路。**
 
@@ -31,13 +33,14 @@
 3. `src/data/mock.ts` 的 `DEFAULT_PROMPTS`（用户内容）不迁移；`cta/eta/modelDesc/tags`、`ANIMATION_LABELS`、`SHOT_SIZES`、`MOTIONS` 迁入字典后，`mock.ts` 保留常量**键**，文案在渲染层 `t()`。
 4. `src/lib/tokens.ts` 的 `formatTokens/compactTokens` 输出不变（仪表惯例，两语言一致）；`getEstimatedTokens` 等纯计算不动。
 5. 现有 `INITIAL_HISTORY`、`demoImage` 等 mock 内容保持中文标题也可不翻（列表条目标题属 mock 数据，翻译属可选 P1）。
+6. `tsconfig.app.json` 需补 `"resolveJsonModule": true`（JSON 语言包导入）；仅前端 world，服务端 NodeNext 不受影响。
 
 ### 0.2 里程碑
 
 | 阶段 | 内容 | 预估 |
 | --- | --- | --- |
 | M5.1 | 主题基建：★token 补齐 + 浅色调色板 + 防闪烁脚本 + ThemeProvider + 偏好弹层 + 媒体深色面 | 1 天 |
-| M5.2 | i18n 基建：字典骨架 + Provider + `useT` + errors 映射 + chrome（rail/topbar/Toast/偏好弹层） | 1 天 |
+| M5.2 | i18n 基建：安装 react-i18next + locales 目录骨架（语言=文件夹/页面=命名空间/base 公共）+ config/Provider + errors + chrome（rail/topbar/Toast/偏好弹层） | 1 天 |
 | M5.3 | 创作台全量：StudioPage/Inspector/PromptComposer/Stage/HistoryStrip/StoryboardTable + mock 标签迁移 | 1–1.5 天 |
 | M5.4 | 库与配置：Works/Assets/Models 三页 + ApiModal + WorkspaceHome/ProjectPage + 日期格式化替换 | 1–1.5 天 |
 | M5.5 | AgentWorkspace 全量 + 收尾（title、a11y、grep 守卫、验收矩阵） | 1 天 |
@@ -90,32 +93,38 @@ flowchart TB
 
   subgraph React["React 树"]
     TP[ThemeProvider<br/>useTheme]
-    IP[I18nProvider<br/>useT / useLocale]
+    IP[I18nextProvider<br/>useTranslation / useLocale]
     APP[App 页面树]
     SM[SettingsMenu 偏好弹层]
   end
 
-  subgraph Dict["src/i18n"]
-    ZH[zh-CN.ts 源]
-    EN[en.ts: Dict]
-    ERR[errors.ts code→key]
-    FMT[format.ts Intl]
+  subgraph Res["src/i18n/locales"]
+    ZH[zh-CN/ base+页面 json]
+    EN[en/ base+页面 json]
   end
+
+  CFG[i18n/config.ts<br/>ns / fallback / 检测]
+  TYP[i18n/types.d.ts<br/>CustomTypeOptions]
+  ERR[base/errors.json<br/>code→文案]
+  FMT[i18n/format.ts<br/>Intl]
 
   LS[(localStorage<br/>lumen.theme / lumen.lang)]
   CSS[styles.css<br/>:root + [data-theme=light]]
 
-  INLINE --> TP & IP
+  INLINE --> TP & CFG
   TP <--> LS
-  IP <--> LS
-  IP --> ZH & EN & ERR & FMT
+  CFG <--> LS
+  CFG --> ZH & EN
+  ZH --> TYP
+  IP --> CFG
   APP --> IP
+  APP --> FMT & ERR
   SM --> TP & IP
   TP --> CSS
 ```
 
-- `ThemeProvider` / `I18nProvider` 相互独立、顺序无要求；`main.tsx` 同时包裹。
-- 组件取文案只经 `useT()`；取主题只经 `useTheme()`。禁止组件内直接读 localStorage。
+- `ThemeProvider` / `I18nextProvider` 相互独立、顺序无要求；`main.tsx` 同时包裹。
+- 组件取文案只经 `useTranslation(ns)`；取主题只经 `useTheme()`。禁止组件内直接读 localStorage。
 
 ---
 
@@ -272,53 +281,124 @@ export const useTheme = () => useContext(ThemeContext);
 
 ## 4. i18n 施工
 
-### 4.1 目录与类型
+### 4.1 依赖与目录
+
+```bash
+npm install i18next react-i18next
+```
 
 ```text
 src/i18n/
-├── index.tsx            # Locale 类型、I18nProvider、useT、useLocale
-├── zh-CN.ts             # source of truth
-├── en.ts                # const en: Dict
-├── dict.ts              # export type Dict = typeof zhCN; export const dicts = { "zh-CN": zhCN, en }
-├── errors.ts            # BFF code → dict key（errors.* 之外可缺省）
-└── format.ts            # relativeTime / formatDateTime / formatNumber / formatBytes
+├── index.tsx            # i18next 实例创建 + I18nextProvider + useLocale
+├── config.ts            # SUPPORTED_LANGUAGES / 命名空间 / 检测 / fallback
+├── types.d.ts           # CustomTypeOptions（key 类型安全）
+├── format.ts            # relativeTime / formatDate / formatBytes（Intl，按 locale）
+└── locales/
+    ├── zh-CN/
+    │   ├── index.ts     # 聚合本语言命名空间
+    │   ├── base/{common,nav,errors,settings}.json
+    │   ├── workspace/page.json   project/page.json
+    │   ├── studio/{composer,inspector,stage,history,storyboard}.json
+    │   ├── agent/page.json       api/page.json
+    │   └── models/page.json      works/page.json   assets/page.json
+    └── en/              # 与 zh-CN 目录一一对应
 ```
 
+**每语言聚合（zh-CN/index.ts，en 同构）**
+
 ```ts
-// zh-CN.ts（节选）
+import common from "./base/common.json";
+import nav from "./base/nav.json";
+import errors from "./base/errors.json";
+import settings from "./base/settings.json";
+import composer from "./studio/composer.json";
+// …其余页面
 export const zhCN = {
-  common: { save: "保存", cancel: "取消", retry: "重试", delete: "删除", loading: "加载中…" },
-  nav: { workspace: "工作区", works: "作品库", assets: "素材库", models: "API 与模型" },
-  works: {
-    count: "{count} 件作品", countOne: "1 件作品",
-    emptyTitle: "还没有作品", emptyBody: "去创作台生成第一张图或第一段视频。",
-  },
-  errors: { PROVIDER_AUTH_FAILED: "API Key 无效或没有权限", /* … */ },
-} as const;
+  base: { common, nav, errors, settings },
+  // 单文件页面：直接展开，命名空间 = 页面名（useTranslation("works")）
+  workspace: workspacePage,
+  project: projectPage,
+  agent: agentPage,
+  api: apiPage,
+  models: modelsPage,
+  works: worksPage,
+  assets: assetsPage,
+  // 多文件页面：二级命名空间（useTranslation("studio.composer")）
+  studio: { composer, inspector, stage, history, storyboard },
+};
+```
 
-// en.ts
-import type { Dict } from "./dict";
-export const en: Dict = { /* 同构 */ };
+> 聚合规则：**一个页面一个文件夹**；单 json（`page.json`）展开为页面命名空间，多 json 以文件名为二级命名空间。en 目录与 zh-CN 完全同构。
 
-// index.tsx
-export function t(dict: Dict, key: string, params?: Record<string, string | number>): string {
-  const value = key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], dict);
-  if (typeof value !== "string") return key;
-  return params ? value.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`)) : value;
+**config.ts**
+
+```ts
+import i18next, { type i18n as I18n } from "i18next";
+import { initReactI18next } from "react-i18next";
+import { zhCN } from "./locales/zh-CN";
+import { en } from "./locales/en";
+
+export const SUPPORTED_LANGUAGES = [
+  { code: "zh-CN", label: "简体中文" },
+  { code: "en", label: "English" },
+] as const;
+export type Locale = (typeof SUPPORTED_LANGUAGES)[number]["code"];
+export const NAMESPACES = ["base", "workspace", "project", "studio", "agent", "api", "models", "works", "assets"] as const;
+
+const stored = (localStorage.getItem("lumen.lang") as Locale | null) ?? null;
+const initial =
+  stored ??
+  ((navigator.language || "zh-CN").toLowerCase().startsWith("zh") ? "zh-CN" : "en");
+
+export const i18n: I18n = i18next.createInstance();
+void i18n.use(initReactI18next).init({
+  resources: { "zh-CN": zhCN, en },
+  lng: initial,
+  fallbackLng: "zh-CN",          // 缺译运行时回退
+  ns: NAMESPACES,
+  defaultNS: "base",
+  interpolation: { escapeValue: false },   // React 已转义
+  react: { useSuspense: false },           // 资源静态打包，无需 Suspense
+  returnEmptyString: false,
+  saveMissing: import.meta.env.DEV,        // dev 控制台列出缺译
+  missingKeyHandler: import.meta.env.DEV
+    ? (_lngs, ns, key) => console.warn(`[i18n] missing ${ns}:${key}`)
+    : undefined,
+});
+```
+
+**类型安全（types.d.ts）**
+
+```ts
+import type { zhCN } from "./locales/zh-CN";
+declare module "i18next" {
+  interface CustomTypeOptions {
+    defaultNS: "base";
+    resources: typeof zhCN;   // 命名空间与 key 全部获得字面量类型
+  }
 }
 ```
 
-**API**
+> zh-CN 是必须完整的源（类型从这里推导）；en 缺 key 不破坏编译，由 dev `missingKeyHandler` + §5.1 同构校验兜底。
 
-```ts
-const { t, locale, setLocale } = useT  之外单独 useLocale();
-t("works.count", { count: 42 });
-tCount(count, "works.count", "works.countOne");   // 复数帮助器
-tError(code: string | undefined, fallback: string) // errors 命中→本地化；未命中→fallback
+**Provider 与 useLocale / setLocale（index.tsx）**
+
+```tsx
+export function I18nProvider({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    document.documentElement.lang = i18n.language;
+    document.title = i18n.t("base:meta.title");
+  }, [i18n.language]);
+  return <I18nextProvider i18n={i18n}>{children}</I18nextProvider>;
+}
+export const useLocale = () => i18n.language as Locale;
+export function setLocale(locale: Locale) {
+  void i18n.changeLanguage(locale);
+  try { localStorage.setItem("lumen.lang", locale); } catch { /* 隐私模式降级 */ }
+}
 ```
 
-- `I18nProvider` 同时负责：`document.documentElement.lang`、`document.title`（`title` 键）、`localStorage["lumen.lang"]` 写入。
-- 简单 key 路径查找（无代理/无依赖收集），性能足够（每渲染几十次字符串拼接）。
+偏好弹层直接调 `setLocale`；语言选项渲染自 `SUPPORTED_LANGUAGES`（新增语言自动出现）。
 
 ### 4.2 组件改造模式（前后对照）
 
@@ -326,34 +406,33 @@ tError(code: string | undefined, fallback: string) // errors 命中→本地化�
 // before（Inspector.tsx）
 <div className="field-label">画面比例 <span className="field-value">{studio.ratio}</span></div>
 
-// after
-const { t } = useT();
-<div className="field-label">{t("studio.inspector.aspectRatio")} <span className="field-value">{studio.ratio}</span></div>
+// after：页面命名空间绑定，key 不带前缀
+const { t } = useTranslation("studio.inspector");
+<div className="field-label">{t("aspectRatio")} <span className="field-value">{studio.ratio}</span></div>
 ```
 
-- 带参数与选择：
+**命名空间命名与页面文件夹的映射**：`studio/` 下有多个 json，注册为 `studio.composer`、`studio.inspector`…（点号层级），资源树即 `studio: { composer: {...} }`。组件内 `useTranslation("studio.inspector")` → `t("aspectRatio")`。跨命名空间：`t("base:common.save")`。
 
 ```tsx
-// before
-<span>{projects.length} 个项目 · {compact(totalTokens)} tokens</span>
-// after
-<span>{t("workspace.count", { count: projects.length })} · {compact(totalTokens)} tokens</span>
+// 插值与复数
+const { t } = useTranslation("works");
+t("stats.count", { count: list.total })            // "{{count}} 件作品"
+t("stats.count", { count: 1 })                     // 自动命中 count_one（en）
+// Toast / 错误：code 命中 base/errors.json 才本地化，否则服务端原文
+catch (error) {
+  const e = error as BffError;
+  toast(e.code && i18n.exists(`errors.${e.code}`, { ns: "base" })
+    ? i18n.t(`errors.${e.code}`, { ns: "base" })
+    : (error as Error).message);
+}
 ```
 
-- Toast / 错误：
+`src/i18n/index.tsx` 再导出帮助器 `tError(code, fallback)` 封装上述逻辑，供所有 catch 使用。
 
-```tsx
-// before
-catch (error) { toast((error as Error).message); }
-// after
-catch (error) { toast(tError((error as BffError).code, (error as Error).message)); }
-```
-
-### 4.3 错误码 → 文案映射（errors.ts 覆盖清单）
+### 4.3 错误码 → 文案（base/errors.json 覆盖清单）
 
 ```text
-BFF_OFFLINE, HTTP_x（兜底键 errors.genericHttp）
-INVALID_REQUEST, INVALID_ACTION, INVALID_MULTIPART, INVALID_CURSOR,
+BFF_OFFLINE, INVALID_REQUEST, INVALID_ACTION, INVALID_MULTIPART, INVALID_CURSOR,
 FILE_REQUIRED, PAYLOAD_TOO_LARGE, RATE_LIMITED, ORIGIN_NOT_ALLOWED, NOT_FOUND, INTERNAL_ERROR,
 UPLOAD_FAILED, UPLOAD_TOO_LARGE, UPLOAD_NETWORK, UNSUPPORTED_MEDIA_TYPE,
 PROJECT_NOT_FOUND, SESSION_NOT_FOUND, AGENT_BUSY,
@@ -369,56 +448,67 @@ GENERATION_NOT_FOUND, GENERATION_FAILED, TASK_TERMINAL, TASK_NOT_RETRYABLE,
 STORYBOARD_REQUIRED, STORYBOARD_INVALID, IMAGE_REQUIRED, PROMPT_REQUIRED, INVALID_DIMENSIONS
 ```
 
-- 上游细节（`details.upstreamMessage`）原样折叠展示；`traceId` 不翻。
-- `BffError` 需要把 `code` 暴露给调用方（已具备 `code` 字段）。
+- 键名 = 错误码原样大写；`details.upstreamMessage` 折叠原文展示，不翻译。
+- `BffError` 已带 `code` 字段；`HTTP_xxx` / `BFF_ERROR` 等 synthetic code 落到 `errors.__fallback__`。
 
-### 4.4 mock.ts 标签迁移
+### 4.4 mock.ts 标签迁移（文件落点）
 
-| 现常量 | 迁移后 |
+| 现常量 | 迁移到（zh-CN + en 同位置） |
 | --- | --- |
-| `MODES[m].cta / eta / modelDesc / tags / attachLabel` | `studio.mode.{mode}.cta/eta/desc/tag1..3/attach`（渲染层查）；`prompt`、`model`（模型名）**保留原文** |
-| `ANIMATION_LABELS / ANIMATION_HINTS` | `studio.animation.{key}.label / .hint` |
-| `SHOT_SIZES / MOTIONS` | `storyboard.shotSize.{i}` / `storyboard.motion.{i}`（数组键） |
-| `BITRATE_LABELS`（lib/tokens） | `studio.bitrate.auto/eight/sixteen/custom` |
+| `MODES[m].cta / eta / modelDesc / tags / attachLabel` | `studio/inspector.json`（`modes.{mode}.cta/.eta/.desc/.tag1..3/.attach`）与 `studio/composer.json`（cta/attach）取用；`prompt`、`model`（模型名）**保留原文** |
+| `ANIMATION_LABELS / ANIMATION_HINTS` | `studio/inspector.json` `animation.{key}.label / .hint` |
+| `SHOT_SIZES / MOTIONS` | `studio/storyboard.json` `shotSizes.0..5` / `motions.0..7`（i18next `returnObjects: true` 取数组） |
+| `BITRATE_LABELS`（lib/tokens） | `studio/inspector.json` `bitrate.auto / eight / sixteen / custom` |
 | `DEFAULT_PROMPTS / DEFAULT_BOARDS 内容` | 保留原文（示例内容） |
-| `INITIAL_HISTORY 标题/badge` | badge 单字改用字典 `studio.history.badge.*`；标题保留 |
+| `INITIAL_HISTORY badge` | `studio/history.json` `badge.image/.video/.group` |
 
-数组键的取值帮助器：`tList("storyboard.shotSize")` 返回 `string[]`（按索引顺序，字典用对象 `{0:…,1:…}` 或数组，取数组并冻结类型为 tuple）。实现取**对象键 + `Dict` 深层类型**，避免 `as const` 数组在 en 中错位。
+数组取值帮助器（i18n/index.tsx）：`tList("shotSizes", { ns: "studio.storyboard" })` 内部 `i18n.t(key, { returnObjects: true }) as string[]`。
 
 ### 4.5 日期与数字替换点
 
 | 位置 | 现状 | 改为 |
 | --- | --- | --- |
-| `src/library/ui.tsx` `relativeTime` | 「刚刚/分钟前/小时前」硬编码 | `format.ts` 的 `relativeTime(iso, locale)`（Intl.RelativeTimeFormat） |
+| `src/library/ui.tsx` `relativeTime` | 「刚刚/分钟前/小时前」硬编码 | `format.ts` `relativeTime(iso, locale)`（`Intl.RelativeTimeFormat`） |
 | `WorkspaceHome` / `ProjectPage` 内部 `relative` | 同上 | 删除本地实现，统一 `format.ts` |
 | `toLocaleDateString("zh-CN")` 各处 | 固定 locale | `formatDate(iso, locale)` |
-| `formatTokens / compactTokens` | 保留 | 不变（仪表惯例）；tooltip 完整值用 `Intl.NumberFormat` |
+| `formatTokens / compactTokens` | 保留 | 不变（仪表惯例）；tooltip 完整值 `Intl.NumberFormat` |
 
 ### 4.6 document.title 与静态文案
 
-- 字典顶层键 `title`：`"LUMEN 流明 · AI 影像工作台"` / `"LUMEN · AI Imaging Workspace"`；`I18nProvider` 副作用写入。
+- `base/meta.json` 或 `base/nav.json` 顶层 `meta.title`：`"LUMEN 流明 · AI 影像工作台"` / `"LUMEN · AI Imaging Workspace"`；`I18nProvider` 副作用写入。
 - `index.html` 保留中文静态 title（无 JS 兜底），挂载后被覆盖。
 
-### 4.7 字典分批迁移顺序
+### 4.7 语言包迁移批次（与组件批次对齐）
 
-与主题 sweep 相同节奏，每批独立提交：
+| 批次 | 组件 | 语言包文件 |
+| --- | --- | --- |
+| 1 | Provider/config、SettingsMenu、Toast、rail/topbar | `base/{common,nav,settings,errors,meta}.json` |
+| 2 | StudioPage/Inspector/PromptComposer/Stage/History | `studio/{composer,inspector,stage,history}.json` |
+| 3 | StoryboardTable + mock 标签 | `studio/storyboard.json` |
+| 4 | Works/Assets/Models 三页 + library/ui 通用件 | `works/page.json`、`assets/page.json`、`models/page.json` |
+| 5 | WorkspaceHome/ProjectPage/ApiModal | `workspace/page.json`、`project/page.json`、`api/page.json` |
+| 6 | AgentWorkspace + 收尾（title、日期、aria 清点） | `agent/page.json` |
 
-1. `common/nav/topbar/settings` + errors 骨架（Provider、SettingsMenu、Toast 全量接入）；
-2. `studio/*` + mock 标签；
-3. `works/assets/models` 三页；
-4. `workspace/project` + ApiModal；
-5. `agent` + 收尾（title、日期、aria-label 清点）。
+### 4.8 新增语言 SOP（后续多语言）
 
----
-
+1. `cp -r src/i18n/locales/zh-CN src/i18n/locales/<lang>`，逐文件翻译；
+2. `locales/<lang>/index.ts` 保持与 zh-CN 同构（json 结构一致即可）；
+3. `config.ts` 的 `SUPPORTED_LANGUAGES` 追加 `{ code: "<lang>", label: "…" }`；
+4. 验证：dev 控制台无 `[i18n] missing`；偏好弹层自动出现新语言；`npm run typecheck` 通过。
 ## 5. 测试与验收
 
 ### 5.1 自动验证
 
 ```bash
-npm run typecheck   # en 字典同构 = key 全量；t() 参数为字符串模板
-npm run build       # 两语言打包产物 + 无 TS 报错
+npm run typecheck   # CustomTypeOptions：组件内 key 拼错/不存在即报错
+npm run build       # 两语言 json 打包 + 无 TS 报错
 npm run test:server # 既有 18 项不回归（服务端零改动，应保持不变）
+```
+
+- **key 全量校验**：dev 启动后 `missingKeyHandler` 输出应为空；另加一次性 node 断言脚本（评审用）遍历 en 与 zh-CN 的 json 树比对同构：
+
+```bash
+node --import tsx -e "import('./src/i18n/locales/zh-CN/index.ts').then(async z=>{const e=await import('./src/i18n/locales/en/index.ts');const walk=(a,b,p='')=>{for(const k of Object.keys(a)){const np=p?p+'.'+k:k;if(!(k in b))throw new Error('en missing '+np);if(typeof a[k]==='object')walk(a[k],b[k],np)}};walk(z.zhCN,e.en);console.log('locales OK')})"
 ```
 
 **grep 守卫**（评审用，一次性命令，不新增 CI 配置）：
@@ -427,7 +517,7 @@ npm run test:server # 既有 18 项不回归（服务端零改动，应保持不
 # 颜色令牌守卫：styles.css 中 :root/[data-theme]/末尾覆盖块之外不应再出现字面琥珀/黑遮罩
 grep -n "rgba(231, 183, 120" src/styles.css | awk -F: '$1 > 90'   # 期望仅剩令牌定义区
 # 文案守卫：组件内直接写中文 UI 文案（排除 mock 内容与注释）应归零
-grep -rn "[一-龥]" src --include="*.tsx" | grep -v "data/mock\|//" | wc -l
+grep -rn "[一-龥]" src --include="*.tsx" | grep -v "data/mock\|i18n/locales\|//" | wc -l
 ```
 
 ### 5.2 DOM 断言（Playwright，不截图）
@@ -467,11 +557,13 @@ grep -rn "[一-龥]" src --include="*.tsx" | grep -v "data/mock\|//" | wc -l
 
 | 任务 | 文件 |
 | --- | --- |
-| 字典骨架 + 类型 + Provider/useT | `src/i18n/*` |
-| errors 映射 | `src/i18n/errors.ts` |
-| format.ts | `src/i18n/format.ts` |
-| chrome 接入（rail/topbar/Toast/SettingsMenu） | `src/App.tsx`、`Toast.tsx` |
-| `BffError.code` 贯通 | `src/lib/api.ts` |
+| 安装 `i18next react-i18next`；`tsconfig.app.json` 加 `resolveJsonModule` | `package.json`、`tsconfig.app.json` |
+| 目录骨架：zh-CN/en 的 `base/*.json` + 各页面 `page.json` + 每语言 `index.ts` 聚合 | `src/i18n/locales/**` |
+| config（SUPPORTED_LANGUAGES/ns/fallback/检测/missing 提示）+ I18nProvider + setLocale + tError | `src/i18n/{index.tsx,config.ts}` |
+| key 类型（CustomTypeOptions） | `src/i18n/types.d.ts` |
+| format.ts（Intl 日期/相对时间/字节） | `src/i18n/format.ts` |
+| chrome 接入（rail/topbar/Toast/SettingsMenu，语言选项读 SUPPORTED_LANGUAGES） | `src/App.tsx`、`Toast.tsx` |
+| `BffError.code` 贯通 + tError 接线 | `src/lib/api.ts` |
 
 ### M5.3 创作台（1–1.5 天）
 
@@ -497,7 +589,8 @@ grep -rn "[一-龥]" src --include="*.tsx" | grep -v "data/mock\|//" | wc -l
 | 字典 key 漂移 | 漏翻 | `Dict` 类型同构 + typecheck；review 约定新文案必须 `t()` |
 | 复数/插值滥用 | 文案质量 | 仅 `.one` 变体 + `{param}`；复杂复数场景改写句子规避 |
 | 切换语言打断用户输入 | 体验 | 语言切换只影响渲染文本，不重置任何 state（草稿保留） |
-| react-i18next 备选 | — | 否决：2 语言静态字典无命名空间/加载/ICU 需求；手写 ~80 行可类型化 |
+| react-i18next 依赖体积 | bundle +~15KB gzip | 已确认接受；换来的命名空间/复数/类型安全/多语言扩展为正向收益 |
+| 多语言后语言包变大 | 打包体积 | 首版静态打包；超过 3 门语言时按语言 `import()` 懒加载（config 仅改资源装载方式，目录结构不变） |
 | 服务端文本（Agent 工具 detail、runner stage）中文 | en 下混杂 | v1 接受：状态词客户端映射；服务端文案本地化列为 P2（需 Accept-Language 协商） |
 
 ---
@@ -506,7 +599,8 @@ grep -rn "[一-龥]" src --include="*.tsx" | grep -v "data/mock\|//" | wc -l
 
 1. 首启语言策略：跟随浏览器（本方案）还是固定 zh-CN？
 2. 顶栏主题快捷图标是否保留（本方案保留，循环三态）？
-3. 英文字典静态打包（本方案）还是 `import()` 懒加载？
+3. 语言包首版静态打包（本方案）；何时切按语言懒加载？（建议 >3 门语言时）
 4. 浅色主题 `--accent: #A96A22`（深琥珀）是否接受？
 5. Agent 服务端文本（stage/detail）P2 是否需要服务端 Accept-Language 支持？
 6. 是否需要在偏好里加「减少动效」覆盖（跟随系统外强制开关）？v1 建议不做。
+7. 页面文件夹内是否允许单文件（`page.json`，本方案允许）还是强制按区块拆分（如 studio）？建议：超过 ~60 key 的页面拆分。
