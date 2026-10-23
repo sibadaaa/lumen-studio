@@ -3,9 +3,26 @@ import type {
   AgentSession,
   AgentSessionDetail,
   ApiErrorBody,
+  AssetBulkInput,
+  AssetBulkResult,
+  AssetFacets,
+  AssetListResponse,
+  AssetSaveResult,
+  AssetUpdateInput,
+  AssetUsageResponse,
+  GenerationMode,
   GenerationRequest,
   GenerationTask,
+  LibraryAsset,
+  ModelCreateInput,
+  ModelInfo,
+  ModelRoute,
+  ModelRouteInput,
+  ModelRoutesResponse,
+  ModelSyncResult,
+  ModelUpdateInput,
   MediaAsset,
+  ModelsResponse,
   ProjectCreateInput,
   ProjectWithStats,
   ProviderConfigInput,
@@ -14,6 +31,12 @@ import type {
   ProvidersResponse,
   SystemInfo,
   UsageSummary,
+  Work,
+  WorkBulkInput,
+  WorkBulkResult,
+  WorkFacets,
+  WorkListResponse,
+  WorkUpdateInput,
 } from "../../shared/contracts";
 
 const BASE = "/api/v1";
@@ -82,7 +105,7 @@ export const api = {
   deleteProvider: (id: string) =>
     request<void>(`/providers/${encodeURIComponent(id)}`, { method: "DELETE" }),
   upload: (file: File, onProgress?: (percent: number) => void, projectId?: string) =>
-    new Promise<MediaAsset>((resolve, reject) => {
+    new Promise<LibraryAsset>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}/uploads`);
       xhr.responseType = "text";
@@ -98,7 +121,7 @@ export const api = {
           payload = null;
         }
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(payload as MediaAsset);
+          resolve(payload as LibraryAsset);
           return;
         }
         const body = payload as ApiErrorBody | null;
@@ -131,6 +154,67 @@ export const api = {
     request<GenerationTask>(`/generations/${encodeURIComponent(id)}/retry`, { method: "POST" }),
   usage: (projectId?: string) =>
     request<UsageSummary>(`/usage${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`),
+
+  /* ------------------------- model catalog (M4) ------------------------ */
+  models: (query = "") => request<ModelsResponse>(`/models${query}`),
+  providerModels: (providerId: string) =>
+    request<ModelsResponse>(`/providers/${encodeURIComponent(providerId)}/models`),
+  syncModels: (providerId: string) =>
+    request<ModelSyncResult>(`/providers/${encodeURIComponent(providerId)}/models/sync`, { method: "POST" }),
+  addModel: (providerId: string, input: ModelCreateInput) =>
+    request<ModelInfo>(`/providers/${encodeURIComponent(providerId)}/models`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateModel: (providerId: string, modelId: string, patch: ModelUpdateInput) =>
+    request<ModelInfo>(`/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  enableModels: (providerId: string, modelIds: string[], enabled: boolean) =>
+    request<{ changed: number; items: ModelInfo[] }>(
+      `/providers/${encodeURIComponent(providerId)}/models/enable`,
+      { method: "POST", body: JSON.stringify({ modelIds, enabled }) }
+    ),
+  verifyModel: (providerId: string, modelId: string) =>
+    request<{ ok: boolean; message: string; model: ModelInfo }>(
+      `/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}/verify`,
+      { method: "POST" }
+    ),
+  deleteModel: (providerId: string, modelId: string) =>
+    request<void>(`/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, {
+      method: "DELETE",
+    }),
+  modelRoutes: () => request<ModelRoutesResponse>("/model-routes"),
+  updateModelRoute: (mode: GenerationMode, input: ModelRouteInput, force = false) =>
+    request<ModelRoute>(`/model-routes/${mode}${force ? "?force=1" : ""}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+
+  /* ---------------------------- works (M4) ----------------------------- */
+  works: (query = "") => request<WorkListResponse>(`/works${query}`),
+  work: (id: string) => request<Work>(`/works/${encodeURIComponent(id)}`),
+  updateWork: (id: string, patch: WorkUpdateInput) =>
+    request<Work>(`/works/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteWork: (id: string) => request<void>(`/works/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  saveWorkToAssets: (id: string) =>
+    request<AssetSaveResult>(`/works/${encodeURIComponent(id)}/save-to-assets`, { method: "POST" }),
+  bulkWorks: (input: WorkBulkInput) =>
+    request<WorkBulkResult>("/works/bulk", { method: "POST", body: JSON.stringify(input) }),
+
+  /* --------------------------- assets (M4) ----------------------------- */
+  assets: (query = "") => request<AssetListResponse>(`/assets${query}`),
+  asset: (id: string) => request<LibraryAsset>(`/assets/${encodeURIComponent(id)}`),
+  updateAsset: (id: string, patch: AssetUpdateInput) =>
+    request<LibraryAsset>(`/assets/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteAsset: (id: string, force = false) =>
+    request<void>(`/assets/${encodeURIComponent(id)}${force ? "?force=1" : ""}`, { method: "DELETE" }),
+  bulkAssets: (input: AssetBulkInput) =>
+    request<AssetBulkResult>("/assets/bulk", { method: "POST", body: JSON.stringify(input) }),
+  assetUsage: (id: string) => request<AssetUsageResponse>(`/assets/${encodeURIComponent(id)}/usage`),
+  assetFacets: () => request<AssetFacets>("/assets/facets"),
+  workFacets: () => request<WorkFacets>("/works/facets"),
 
   projects: () => request<{ items: ProjectWithStats[] }>("/projects"),
   project: (projectId: string) =>

@@ -293,6 +293,10 @@ export class ProviderStore {
     );
   }
 
+  markModelsSynced(id: string, at: string | null, error: string | null) {
+    db.prepare("UPDATE providers SET models_synced_at = ?, models_sync_error = ? WHERE id = ?").run(at, error, id);
+  }
+
   clear(id: string) {
     db.prepare("DELETE FROM providers WHERE id = ?").run(id);
     if (this.activeId === id) {

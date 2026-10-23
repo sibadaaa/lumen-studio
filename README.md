@@ -2,8 +2,8 @@
 
 一个支持 API 的 React 文生图 / 文生视频 / 图生图 / 图生视频 / 图组视频工作台。
 
-> **当前阶段：M3 · React + 本机 BFF + SQLite + 本地 Agent Runtime。**  
-> 工作区 → 项目 → 创作台 → Agent 工作区、五种生成模式、自定义规格、动画模式、分镜表、token 计量均已实现；BFF 已接入 **Provider Adapter、加密密钥、素材上传、SQLite 持久化队列与轮询、FFmpeg 合成**，并提供 **项目 / 会话持久化与可执行的本地 Agent**（解析意图 → 计划 → 调用工具 → 真实生成 → 回写结果）。本地演示 Provider 可在无 Key 的情况下跑通完整链路。
+> **当前阶段：M4 · 模型获取 / 作品库 / 素材库已落地。**  
+> 工作区 → 项目 → 创作台 → Agent 工作区、五种生成模式、自定义规格、动画模式、分镜表、token 计量均已实现；BFF 已接入 **Provider Adapter、加密密钥、素材上传、SQLite 持久化队列与轮询、FFmpeg 合成**，并提供 **项目 / 会话持久化与可执行的本地 Agent**（解析意图 → 计划 → 调用工具 → 真实生成 → 回写结果）。本地演示 Provider 可在无 Key 的情况下跑通完整链路。左侧导航的**作品库、素材库、API 与模型（模型目录 + 路由）**均为可用页面。
 
 ## 运行
 
@@ -45,6 +45,9 @@ npm run test:server   # AES-GCM / token 估算 / FFmpeg 合成测试
 | 持久化 | **SQLite（`node:sqlite`，WAL）**：Provider、项目、素材、生成任务、Agent 会话与消息；旧 JSON 自动导入 |
 | 项目 | 项目 CRUD、项目统计（会话/素材/生成/tokens）、项目素材上传与展示 |
 | Agent Runtime | 本地确定性编排：意图解析 → 执行计划 → 工具调用（inspect / plan / generate / compose）→ SSE 事件 → 结果写回会话 |
+| 模型目录 | `/models` 真实目录：远程发现同步、手工添加、能力裁剪、启用状态、五种模式默认路由；生成前校验模型与模式匹配 |
+| 作品库 | 任务成功自动物化为 `works` 快照（提示词/参数/模型/tokens/来源），历史回填与启动对账；筛选/收藏/批量/复用参数/另存为素材/下载 |
+| 素材库 | 上传 SHA-256 去重提示、标签（≤8）、项目/来源/未使用筛选、引用关系（运行中阻止删除）、作品一键转素材、素材选择器直填创作台 |
 | 本地单用户 | 无登录；Origin 白名单、接口限流、上传大小限制 |
 
 ### API 入口
@@ -56,10 +59,27 @@ GET    /api/v1/providers
 PUT    /api/v1/providers/:id
 POST   /api/v1/providers/:id/test
 POST   /api/v1/providers/:id/activate
-GET    /api/v1/models?mode=...
+GET    /api/v1/models?mode=...            # 模型目录（providerId / enabled 过滤）
+GET    /api/v1/model-routes
+PUT    /api/v1/model-routes/:mode
+GET    /api/v1/providers/:id/models
+POST   /api/v1/providers/:id/models/sync
+POST   /api/v1/providers/:id/models/enable
 POST   /api/v1/uploads
-GET    /api/v1/assets
-DELETE /api/v1/assets/:id
+GET    /api/v1/assets                     # 素材库：标签/来源/未使用/游标分页
+GET    /api/v1/assets/facets
+PATCH  /api/v1/assets/:id
+DELETE /api/v1/assets/:id[?force=1]
+POST   /api/v1/assets/bulk
+GET    /api/v1/assets/:id/usage
+GET    /api/v1/assets/:id/download
+GET    /api/v1/works                      # 作品库：筛选 + 游标分页
+GET    /api/v1/works/facets
+PATCH  /api/v1/works/:id
+DELETE /api/v1/works/:id
+POST   /api/v1/works/:id/save-to-assets
+POST   /api/v1/works/bulk
+GET    /api/v1/works/:id/download
 POST   /api/v1/generations
 GET    /api/v1/generations
 GET    /api/v1/generations/:id
@@ -242,7 +262,8 @@ server/                      Hono BFF
 - 前端默认 HTTP 轮询任务；SSE 端点已实现，可在作品库/长任务场景切换。
 - 视频统一输出 H.264 MP4（无音轨）；生成音频的 Provider 结果当前在合成时丢弃音轨，后续可补 AAC 混流。
 - Agent 是**本地确定性编排器**，不调用 LLM；接入真实模型（DSH 会话协议或 Provider LLM）是下一步。
-- 作品库、素材库独立页面、模型目录与路由的**设计与施工图已给出**（[04](./docs/04-model-works-assets-design.md) / [05](./docs/05-model-works-assets-blueprint.md)），生产代码尚未接入；项目重命名、会话删除 UI 也仍待接入（API 已具备）。
+- 模型获取、作品库、素材库已按 [04](./docs/04-model-works-assets-design.md) / [05](./docs/05-model-works-assets-blueprint.md) 落地：模型目录与路由、作品快照与历史回填、素材标签/引用/作品转素材均可用；项目重命名、会话删除 UI 仍待接入（API 已具备）。
+- 作品/素材删除为软删除；文件按 `MEDIA_RETENTION_DAYS` 保留策略清理（清理任务 P1）。
 - 未实现账号/多用户/配额；本地单用户，访问控制依赖本机与反向代理。
 - 生产化需要：Postgres/SQLite、对象存储、短时签名 URL、审计日志、Docker 镜像与 CI。
 
@@ -250,6 +271,6 @@ server/                      Hono BFF
 
 - `npm run typecheck`：前端 + 服务端通过。
 - `npm run test:server`：AES-GCM 往返/防篡改、token 估算、FFmpeg 两图合成与探测通过。
-- `npm run test:server`（13 项）还覆盖：SQLite 项目/会话/消息持久化、Agent 意图解析（模式/竖屏/码率/每镜时长/动画）、Agent 取消（幂等、不递归、任务变为 canceled）。
+- `npm run test:server`（18 项）还覆盖：SQLite 项目/会话/消息持久化、Agent 意图解析（模式/竖屏/码率/每镜时长/动画）、Agent 取消（幂等、不递归、任务变为 canceled）、模型分类/目录/路由（含用户编辑保护与删除守卫）、作品物化（多输出/幂等/attempt/游标/收藏/软删）、素材（哈希/标签上限/引用/软删）。
 - Playwright 冒烟：工作区 → 新建项目 → 项目页 → Agent 工作区 → 新建会话 → 一句话触发图组视频（工具卡 / 计划 / SSE / 720×1280 成片）→ 刷新后会话仍在 → 创作台生成写入当前项目，无控制台错误。
 - 媒体接口验证：Range 请求返回 `206 Partial Content`。

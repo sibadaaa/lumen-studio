@@ -37,7 +37,7 @@ function transaction<T>(fn: () => T): T {
   }
 }
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 4;
 
 function migrate() {
   db.exec(`
@@ -159,6 +159,133 @@ function migrate() {
       `);
       db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(1, now());
     }
+
+    if (current < 2) {
+      db.exec(`
+        ALTER TABLE providers ADD COLUMN models_synced_at TEXT;
+        ALTER TABLE providers ADD COLUMN models_sync_error TEXT;
+
+        CREATE TABLE IF NOT EXISTS provider_models (
+          provider_id   TEXT NOT NULL,
+          model_id      TEXT NOT NULL,
+          label         TEXT NOT NULL DEFAULT '',
+          kind          TEXT NOT NULL DEFAULT 'unknown',
+          modes_json    TEXT NOT NULL DEFAULT '[]',
+          capabilities_json TEXT NOT NULL DEFAULT '{}',
+          source        TEXT NOT NULL DEFAULT 'discovered',
+          enabled       INTEGER NOT NULL DEFAULT 0,
+          user_edited   INTEGER NOT NULL DEFAULT 0,
+          status        TEXT NOT NULL DEFAULT 'unverified',
+          last_synced_at TEXT,
+          last_seen_at  TEXT,
+          last_used_at  TEXT,
+          last_error    TEXT,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          PRIMARY KEY (provider_id, model_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_provider_models_provider
+          ON provider_models(provider_id, enabled, kind);
+        CREATE INDEX IF NOT EXISTS idx_provider_models_status
+          ON provider_models(status);
+
+        CREATE TABLE IF NOT EXISTS model_routes (
+          mode          TEXT PRIMARY KEY,
+          provider_id   TEXT NOT NULL,
+          model_id      TEXT NOT NULL,
+          updated_at    TEXT NOT NULL
+        );
+      `);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(2, now());
+    }
+
+    if (current < 3) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS works (
+          id             TEXT PRIMARY KEY,
+          generation_id  TEXT NOT NULL,
+          attempt        INTEGER NOT NULL DEFAULT 0,
+          output_index   INTEGER NOT NULL DEFAULT 0,
+          output_id      TEXT,
+          kind           TEXT NOT NULL,
+          mime           TEXT NOT NULL,
+          size           INTEGER NOT NULL DEFAULT 0,
+          width          INTEGER,
+          height         INTEGER,
+          duration_sec   REAL,
+          url            TEXT NOT NULL,
+          thumbnail_url  TEXT,
+          title          TEXT NOT NULL DEFAULT '',
+          prompt         TEXT NOT NULL DEFAULT '',
+          mode           TEXT NOT NULL,
+          provider_id    TEXT NOT NULL,
+          model_id       TEXT NOT NULL,
+          params_json    TEXT NOT NULL DEFAULT '{}',
+          inputs_json    TEXT NOT NULL DEFAULT '[]',
+          storyboard_json TEXT NOT NULL DEFAULT '[]',
+          usage_tokens   INTEGER NOT NULL DEFAULT 0,
+          usage_estimated INTEGER NOT NULL DEFAULT 0,
+          project_id     TEXT,
+          session_id     TEXT,
+          source         TEXT NOT NULL DEFAULT 'studio',
+          favorite       INTEGER NOT NULL DEFAULT 0,
+          deleted_at     TEXT,
+          created_at     TEXT NOT NULL,
+          updated_at     TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_works_generation_attempt_output
+          ON works(generation_id, attempt, output_index);
+        CREATE INDEX IF NOT EXISTS idx_works_created
+          ON works(deleted_at, created_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_works_project
+          ON works(project_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_works_mode
+          ON works(mode, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_works_model
+          ON works(provider_id, model_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_works_favorite
+          ON works(favorite, created_at DESC);
+      `);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(3, now());
+    }
+
+    if (current < 4) {
+      db.exec(`
+        ALTER TABLE assets ADD COLUMN sha256 TEXT;
+        ALTER TABLE assets ADD COLUMN source TEXT NOT NULL DEFAULT 'upload';
+        ALTER TABLE assets ADD COLUMN source_ref TEXT;
+        ALTER TABLE assets ADD COLUMN updated_at TEXT;
+        ALTER TABLE assets ADD COLUMN deleted_at TEXT;
+
+        UPDATE assets SET updated_at = created_at WHERE updated_at IS NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_assets_created
+          ON assets(deleted_at, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_assets_sha256
+          ON assets(sha256);
+        CREATE INDEX IF NOT EXISTS idx_assets_source
+          ON assets(source, source_ref);
+
+        CREATE TABLE IF NOT EXISTS asset_tags (
+          asset_id   TEXT NOT NULL,
+          tag        TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (asset_id, tag)
+        );
+        CREATE INDEX IF NOT EXISTS idx_asset_tags_tag ON asset_tags(tag);
+
+        CREATE TABLE IF NOT EXISTS asset_usages (
+          asset_id      TEXT NOT NULL,
+          generation_id TEXT NOT NULL,
+          role          TEXT NOT NULL,
+          created_at    TEXT NOT NULL,
+          PRIMARY KEY (asset_id, generation_id, role)
+        );
+        CREATE INDEX IF NOT EXISTS idx_asset_usages_asset ON asset_usages(asset_id);
+        CREATE INDEX IF NOT EXISTS idx_asset_usages_generation ON asset_usages(generation_id);
+      `);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(4, now());
+    }
   });
 }
 
@@ -191,6 +318,11 @@ export function tableCount(table: string): number {
     "generations",
     "agent_sessions",
     "agent_messages",
+    "provider_models",
+    "model_routes",
+    "works",
+    "asset_tags",
+    "asset_usages",
   ]);
   if (!allowed.has(table)) throw new Error(`unknown table ${table}`);
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
@@ -419,5 +551,7 @@ export function dbStats() {
     generations: tableCount("generations"),
     sessions: tableCount("agent_sessions"),
     messages: tableCount("agent_messages"),
+    models: tableCount("provider_models"),
+    works: tableCount("works"),
   };
 }

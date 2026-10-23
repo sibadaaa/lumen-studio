@@ -1,6 +1,7 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { MediaAsset } from "../../shared/contracts.js";
+import type { LibraryAsset, MediaAsset } from "../../shared/contracts.js";
 import { config, paths } from "../config.js";
 import { createThumbnail, extensionMime, normalizeImage, probeMedia } from "./ffmpeg.js";
 import { buildAssetUrl, assetStore, createAssetRecord } from "../storage/assets.js";
@@ -24,12 +25,12 @@ function sniffImage(buffer: Buffer): { mime: string; ext: string } | null {
   return null;
 }
 
-function monthDir() {
+export function monthDir() {
   const date = new Date();
   return path.join(String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, "0"));
 }
 
-export async function storeImageUpload(file: File, purpose = "reference", projectId?: string | null): Promise<MediaAsset> {
+export async function storeImageUpload(file: File, purpose = "reference", projectId?: string | null): Promise<LibraryAsset> {
   if (file.size > config.maxUploadBytes) {
     throw Object.assign(new Error(`单张图片不能超过 ${Math.round(config.maxUploadBytes / 1024 / 1024)}MB`), {
       code: "UPLOAD_TOO_LARGE",
@@ -47,6 +48,9 @@ export async function storeImageUpload(file: File, purpose = "reference", projec
   if (!sniffed) {
     throw Object.assign(new Error("文件内容不是受支持的图片格式"), { code: "UNSUPPORTED_MEDIA_TYPE", status: 415 });
   }
+  const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
+  // Duplicate detection is advisory only: we keep both uploads and surface a hint.
+  const duplicate = assetStore.findBySha256(sha256);
 
   const id = assetStore.newId();
   const relativeDir = monthDir();
@@ -89,27 +93,27 @@ export async function storeImageUpload(file: File, purpose = "reference", projec
     thumbnailUrl,
     originalName: file.name ? path.basename(file.name).slice(0, 160) : undefined,
   });
-  assetStore.add(record, projectId ?? null);
+  assetStore.addWithMeta(record, { projectId: projectId ?? null, source: "upload", sha256 });
 
   // Strip metadata by re-encoding in the background only after the source is
   // safely stored. This keeps the upload response fast.
   const normalized = path.join(dir, `${id}_clean.jpg`);
   void normalizeImage(absolutePath, normalized, width || 2048, height || 1152)
     .then(() => {
-      const cleanRecord = {
-        ...record,
+      assetStore.updateFile(id, {
         url: buildAssetUrl(path.join(relativeDir, `${id}_clean.jpg`)),
         mime: "image/jpeg",
         size: fs.statSync(normalized).size,
-      };
-      assetStore.add(cleanRecord, projectId ?? null);
+      });
     })
     .catch(() => {
       /* keep the original */
     });
 
   void purpose;
-  return record;
+  const detail = assetStore.getDetail(id);
+  if (!detail) throw Object.assign(new Error("素材记录写入失败"), { code: "UPLOAD_FAILED", status: 500 });
+  return duplicate ? { ...detail, duplicateOf: duplicate.id } : detail;
 }
 
 export function uploadPathFor(id: string, mime: string) {

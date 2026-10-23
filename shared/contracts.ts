@@ -420,3 +420,234 @@ export interface AgentSendResponse {
   message: AgentMessage;
   runId: string;
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Model catalog, works library and asset library (M4)                 */
+/* ------------------------------------------------------------------ */
+
+export type ModelKind = "image" | "video" | "unknown";
+export type ModelSource = "discovered" | "manual" | "seed";
+export type ModelStatus = "ready" | "unverified" | "missing";
+
+export interface ModelInfo {
+  providerId: string;
+  id: string;
+  label: string;
+  kind: ModelKind;
+  modes: GenerationMode[];
+  capabilities: ProviderCapabilities;
+  source: ModelSource;
+  enabled: boolean;
+  status: ModelStatus;
+  lastSyncedAt: string | null;
+  lastSeenAt: string | null;
+  lastUsedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModelSyncResult {
+  providerId: string;
+  supported: boolean;
+  fetched: number;
+  added: number;
+  updated: number;
+  missing: number;
+  suggestedEnabled: string[];
+  message: string;
+  items: ModelInfo[];
+}
+
+export interface ModelCreateInput {
+  id: string;
+  label?: string;
+  kind: ModelKind;
+  modes: GenerationMode[];
+  enabled?: boolean;
+}
+
+export interface ModelUpdateInput {
+  label?: string;
+  kind?: ModelKind;
+  modes?: GenerationMode[];
+  enabled?: boolean;
+}
+
+export interface ModelEnableInput {
+  modelIds: string[];
+  enabled: boolean;
+}
+
+export interface ModelRoute {
+  mode: GenerationMode;
+  providerId: string;
+  modelId: string;
+  model: ModelInfo | null;
+  warning: string | null;
+  updatedAt: string | null;
+}
+
+export interface ModelRouteInput {
+  providerId: string;
+  modelId: string;
+}
+
+export interface ModelsResponse {
+  items: ModelInfo[];
+}
+
+export interface ModelRoutesResponse {
+  items: ModelRoute[];
+}
+
+export type WorkSource = "studio" | "agent";
+
+export interface WorkUsage {
+  totalTokens: number;
+  estimated: boolean;
+}
+
+export interface Work {
+  id: string;
+  generationId: string;
+  attempt: number;
+  outputIndex: number;
+  kind: "image" | "video";
+  mime: string;
+  size: number;
+  width?: number;
+  height?: number;
+  durationSec?: number;
+  url: string;
+  thumbnailUrl?: string;
+  title: string;
+  prompt: string;
+  mode: GenerationMode;
+  providerId: string;
+  modelId: string;
+  params: GenerationParams;
+  inputs: GenerationInput[];
+  storyboard: StoryboardRow[];
+  usage: WorkUsage;
+  projectId?: string;
+  sessionId?: string;
+  source: WorkSource;
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkFacetValue {
+  value: string;
+  count: number;
+}
+
+export interface WorkFacets {
+  total: number;
+  kinds: WorkFacetValue[];
+  modes: WorkFacetValue[];
+  projects: WorkFacetValue[];
+}
+
+export interface WorkListResponse {
+  items: Work[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface WorkUpdateInput {
+  title?: string;
+  favorite?: boolean;
+  projectId?: string | null;
+}
+
+export type WorkBulkAction = "favorite" | "unfavorite" | "move_project" | "delete" | "save_to_assets";
+
+export interface WorkBulkInput {
+  action: WorkBulkAction;
+  ids: string[];
+  projectId?: string | null;
+}
+
+export interface WorkBulkFailure {
+  id: string;
+  code: string;
+  message: string;
+}
+
+export interface WorkBulkResult {
+  updated: number;
+  created?: number;
+  failed: WorkBulkFailure[];
+}
+
+export type AssetSource = "upload" | "work" | "agent";
+
+export interface LibraryAsset extends MediaAsset {
+  projectId?: string;
+  sha256?: string;
+  source: AssetSource;
+  sourceRef?: string;
+  tags: string[];
+  usageCount: number;
+  updatedAt: string;
+  duplicateOf?: string;
+}
+
+export interface AssetUsage {
+  assetId: string;
+  generationId: string;
+  workId?: string;
+  mode: GenerationMode;
+  role: AssetRole;
+  createdAt: string;
+  thumbnailUrl?: string;
+}
+
+export interface AssetUsageResponse {
+  items: AssetUsage[];
+}
+
+export interface AssetFacets {
+  total: number;
+  kinds: WorkFacetValue[];
+  sources: WorkFacetValue[];
+  projects: WorkFacetValue[];
+  tags: WorkFacetValue[];
+  used: number;
+  unused: number;
+}
+
+export interface AssetListResponse {
+  items: LibraryAsset[];
+  nextCursor: string | null;
+  total: number;
+}
+
+export interface AssetUpdateInput {
+  originalName?: string;
+  projectId?: string | null;
+  tags?: string[];
+}
+
+export type AssetBulkAction = "move_project" | "add_tags" | "remove_tags" | "delete";
+
+export interface AssetBulkInput {
+  action: AssetBulkAction;
+  ids: string[];
+  projectId?: string | null;
+  tags?: string[];
+}
+
+export interface AssetBulkResult {
+  updated: number;
+  skipped: number;
+  failed: WorkBulkFailure[];
+}
+
+export interface AssetSaveResult {
+  asset: LibraryAsset;
+  created: boolean;
+}

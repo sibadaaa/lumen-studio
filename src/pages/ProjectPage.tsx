@@ -8,6 +8,7 @@ interface Props {
   projectId: string;
   onEnterStudio: () => void;
   onOpenAgent: (sessionId?: string) => void;
+  onOpenAssets?: (projectId: string) => void;
   toast: (message: string, type?: "default" | "success") => void;
 }
 
@@ -22,7 +23,7 @@ const relative = (iso: string) => {
   return new Date(iso).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 };
 
-export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, toast }: Props) {
+export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAssets, toast }: Props) {
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -141,7 +142,13 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, toast }: Pr
 
           <section className="pp-assets">
             <div className="wh-section-head">
-              <span>项目素材</span>
+              {onOpenAssets ? (
+                <button className="pp-assets-link" onClick={() => onOpenAssets(projectId)} title="在素材库中打开本项目">
+                  项目素材 <ArrowRight size={11} />
+                </button>
+              ) : (
+                <span>项目素材</span>
+              )}
               <button onClick={() => fileRef.current?.click()} disabled={uploading}>
                 {uploading ? "上传中…" : "添加"} <ImagePlus size={12} />
               </button>

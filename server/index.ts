@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
@@ -13,7 +13,13 @@ import type {
   ApiErrorBody,
   GenerationRequest,
   GenerationTask,
+  GenerationMode,
+  LibraryAsset,
   MediaAsset,
+  ModelInfo,
+  ModelRoutesResponse,
+  ModelSyncResult,
+  ModelsResponse,
   ProviderConfigInput,
   ProviderInfo,
   ProvidersResponse,
@@ -27,10 +33,15 @@ import { PROVIDER_CAPABILITIES } from "../shared/contracts.js";
 import { config, ensureDataDirs, paths } from "./config.js";
 import { providerStore } from "./storage/providers.js";
 import { assetStore } from "./storage/assets.js";
+import { assetUsageStore } from "./storage/asset-usage.js";
+import { modelStore, inferModelKind, modesFor, capabilitiesFor } from "./storage/models.js";
+import { workStore } from "./storage/works.js";
+import { importWorkAsAsset } from "./media/asset-import.js";
 import { jobStore, isTerminal } from "./jobs/store.js";
 import { jobRunner } from "./jobs/runner.js";
 import { estimateGenerationTokens, estimateSeconds } from "./jobs/estimate.js";
 import { createAdapter } from "./providers/index.js";
+import type { RemoteModel } from "./providers/types.js";
 import { ffmpegAvailable, getFfmpegVersion } from "./media/ffmpeg.js";
 import { storeImageUpload } from "./media/upload.js";
 import { extensionMime } from "./media/ffmpeg.js";
@@ -40,11 +51,68 @@ import { getVault } from "./security/vault.js";
 import { projectStore } from "./storage/projects.js";
 import { agentStore } from "./storage/sessions.js";
 import { agentRuntime } from "./agent/runtime.js";
-import { dbStats } from "./db.js";
+import { db, dbStats, getSetting, setSetting, withTransaction } from "./db.js";
 
 ensureDataDirs();
 const vault = getVault();
 console.log(`[security] secret vault ready (${vault.source === "env" ? "APP_SECRET" : "data/master.key"})`);
+
+/**
+ * M4 startup hooks: seed the model catalog from configured providers, then
+ * reconcile works and asset usages for anything a crash may have missed.
+ */
+function runStartupReconciliation() {
+  try {
+    for (const provider of providerStore.list()) {
+      if (!provider.configured) continue;
+      modelStore.seedFromProvider(provider);
+    }
+    const seeded = modelStore.count();
+    console.log(`[models] catalog ready (${seeded} model(s))`);
+  } catch (error) {
+    console.error("[models] seed failed:", (error as Error).message);
+  }
+  try {
+    const created = workStore.reconcile(jobStore.listInternal({ status: "succeeded", limit: 200 }));
+    if (created > 0) console.log(`[works] reconciled ${created} work(s) from history`);
+    if (!getSetting("works_backfill_v1")) {
+      setSetting("works_backfill_v1", new Date().toISOString());
+    }
+  } catch (error) {
+    console.error("[works] reconcile failed:", (error as Error).message);
+  }
+  try {
+    assetUsageStore.backfill(jobStore.listInternal({ limit: 200 }));
+    if (!getSetting("asset_usage_backfill_v1")) {
+      setSetting("asset_usage_backfill_v1", new Date().toISOString());
+    }
+  } catch (error) {
+    console.error("[assets] usage reconcile failed:", (error as Error).message);
+  }
+  void backfillAssetHashes();
+}
+
+/** Hash legacy uploads in small batches so boot is never blocked. */
+async function backfillAssetHashes() {
+  if (getSetting("assets_hash_backfill_v1")) return;
+  try {
+    const { createHash } = await import("node:crypto");
+    const pending = assetStore.search({ limit: 100 }).items.filter((item) => !item.sha256);
+    for (const item of pending) {
+      const relative = item.url.replace(/^\/media\/assets\//, "");
+      const file = path.resolve(paths.assets, decodeURIComponent(relative));
+      if (!file.startsWith(paths.assets) || !fs.existsSync(file)) continue;
+      const sha256 = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+      db.prepare("UPDATE assets SET sha256 = ? WHERE id = ?").run(sha256, item.id);
+    }
+    setSetting("assets_hash_backfill_v1", new Date().toISOString());
+    if (pending.length > 0) console.log(`[assets] hashed ${pending.length} legacy upload(s)`);
+  } catch (error) {
+    console.error("[assets] hash backfill failed:", (error as Error).message);
+  }
+}
+
+runStartupReconciliation();
 
 type AppEnv = { Variables: { traceId: string } };
 const app = new Hono<AppEnv>();
@@ -362,7 +430,19 @@ api.delete("/providers/:providerId", (c) => {
 
 api.get("/models", (c) => {
   const mode = c.req.query("mode");
-  const provider = providerStore.active();
+  const providerId = c.req.query("providerId") || providerStore.activeId || undefined;
+  const enabledOnly = c.req.query("enabled") !== "0";
+
+  // Catalog path: seeded/discovered models win over the legacy synthesis.
+  const catalog = modelStore.list({ providerId, enabled: enabledOnly || undefined });
+  if (catalog.length > 0) {
+    const items = mode ? catalog.filter((model) => model.modes.includes(mode as GenerationMode)) : catalog;
+    return c.json({ items } satisfies ModelsResponse);
+  }
+
+  // Legacy fallback: synthesize the two configured models so old clients and
+  // unseeded providers keep working.
+  const provider = providerId ? providerStore.get(providerId) : providerStore.active();
   if (!provider?.configured) return c.json({ items: [] });
   const modes = [
     "text-to-image",
@@ -388,6 +468,282 @@ api.get("/models", (c) => {
     },
   ].filter((item) => !mode || item.modes.includes(mode));
   return c.json({ items });
+});
+
+/* --------------------------- model catalog --------------------------- */
+
+const modelCreateSchema = z.object({
+  id: z.string().min(1).max(200),
+  label: z.string().max(200).optional(),
+  kind: z.enum(["image", "video", "unknown"]),
+  modes: z.array(generationModeSchema).max(5),
+  enabled: z.boolean().optional(),
+});
+
+const modelUpdateSchema = z.object({
+  label: z.string().max(200).optional(),
+  kind: z.enum(["image", "video", "unknown"]).optional(),
+  modes: z.array(generationModeSchema).max(5).optional(),
+  enabled: z.boolean().optional(),
+});
+
+const modelEnableSchema = z.object({
+  modelIds: z.array(z.string().min(1).max(200)).min(1).max(100),
+  enabled: z.boolean(),
+});
+
+function requireProvider(providerId: string) {
+  const provider = providerStore.get(providerId);
+  if (!provider) throw new ApiError(404, "PROVIDER_NOT_FOUND", "Provider 不存在");
+  return provider;
+}
+
+api.get("/providers/:providerId/models", (c) => {
+  const providerId = c.req.param("providerId");
+  requireProvider(providerId);
+  const enabled = c.req.query("enabled");
+  const items = modelStore.list({
+    providerId,
+    enabled: enabled === undefined ? undefined : enabled === "1",
+    includeMissing: c.req.query("includeMissing") === "1",
+  });
+  return c.json({ items } satisfies ModelsResponse);
+});
+
+api.post("/providers/:providerId/models/enable", async (c) => {
+  const providerId = c.req.param("providerId");
+  requireProvider(providerId);
+  const body = modelEnableSchema.parse(await c.req.json());
+  const changed = modelStore.setEnabled(providerId, body.modelIds, body.enabled);
+  return c.json({ changed, items: modelStore.list({ providerId, includeMissing: true }) });
+});
+
+api.post("/providers/:providerId/models/sync", async (c) => {
+  const providerId = c.req.param("providerId");
+  const provider = requireProvider(providerId);
+  if (!provider.configured) {
+    throw new ApiError(422, "PROVIDER_NOT_CONFIGURED", "请先保存并测试连接");
+  }
+  if (!rateLimit(`modelsync:${providerId}`, 10)) {
+    throw new ApiError(429, "RATE_LIMITED", "模型同步过于频繁，请稍后再试", { retryable: true });
+  }
+  const resolved = providerStore.getResolved(providerId)!;
+  const adapter = createAdapter(resolved);
+  if (!adapter.listModels) {
+    return c.json({
+      providerId,
+      supported: false,
+      fetched: 0,
+      added: 0,
+      updated: 0,
+      missing: 0,
+      suggestedEnabled: [],
+      message: "该 Provider 不支持模型列表，可手动添加模型",
+      items: modelStore.list({ providerId, includeMissing: true }),
+    } satisfies ModelSyncResult);
+  }
+
+  const started = Date.now();
+  let remote: RemoteModel[];
+  try {
+    remote = await adapter.listModels();
+  } catch (error) {
+    const err = error as { status?: number | null; code?: string; message?: string };
+    const message = err.message || "模型列表获取失败";
+    providerStore.markModelsSynced(providerId, null, message);
+    if (err.status === 401 || err.status === 403) {
+      throw new ApiError(502, "MODEL_DISCOVERY_AUTH", message);
+    }
+    if (err.status === 404 || err.status === 405) {
+      return c.json({
+        providerId,
+        supported: false,
+        fetched: 0,
+        added: 0,
+        updated: 0,
+        missing: 0,
+        suggestedEnabled: [],
+        message: "该网关未开放模型列表，可手动添加模型",
+        items: modelStore.list({ providerId, includeMissing: true }),
+      } satisfies ModelSyncResult);
+    }
+    throw new ApiError(502, err.code || "MODEL_DISCOVERY_NETWORK", message);
+  }
+
+  // Cap the response: model ids are attacker-controllable for custom gateways.
+  const deduped = new Map<string, RemoteModel>();
+  for (const item of remote.slice(0, 500)) {
+    const id = String(item.id || "").trim().slice(0, 200);
+    if (id && !deduped.has(id)) deduped.set(id, { ...item, id });
+  }
+
+  const result = withTransaction(() => {
+    let added = 0;
+    let updated = 0;
+    let missing = 0;
+    const suggested: string[] = [];
+    const existing = modelStore.listRaw(providerId);
+    const timestamp = new Date().toISOString();
+
+    for (const remoteModel of deduped.values()) {
+      const current = existing.get(remoteModel.id);
+      const inferred = inferModelKind(remoteModel.id, provider.kind);
+      const kind = current?.source === "manual" || (current && current.label !== current.id) ? current.kind : inferred.kind;
+      const userEdited = Boolean(current?.source === "manual");
+      const modes = userEdited && current ? current.modes : modesFor(kind, provider.kind);
+      const capabilities = userEdited && current ? current.capabilities : capabilitiesFor(kind, provider.kind);
+      modelStore.upsert({
+        providerId,
+        modelId: remoteModel.id,
+        label: remoteModel.label || remoteModel.id,
+        kind,
+        modes,
+        capabilities,
+        source: userEdited ? "manual" : current?.source === "seed" ? "seed" : "discovered",
+        enabled: current?.enabled ?? false,
+        userEdited,
+        status: "ready",
+        lastSyncedAt: timestamp,
+        lastSeenAt: timestamp,
+      });
+      if (!current) {
+        added += 1;
+        if (inferred.confidence === "high" && kind !== "unknown") suggested.push(remoteModel.id);
+      } else {
+        updated += 1;
+      }
+    }
+
+    if (deduped.size > 0) {
+      for (const [modelId, current] of existing) {
+        if (current.source !== "discovered") continue;
+        if (!deduped.has(modelId)) {
+          modelStore.markMissing(providerId, modelId, timestamp);
+          missing += 1;
+        }
+      }
+    }
+
+    providerStore.markModelsSynced(providerId, timestamp, null);
+    return { added, updated, missing, suggested };
+  });
+
+  console.log(
+    `[models] synced ${providerId}: fetched=${deduped.size} added=${result.added} updated=${result.updated} missing=${result.missing} in ${Date.now() - started}ms`
+  );
+  return c.json({
+    providerId,
+    supported: true,
+    fetched: deduped.size,
+    ...result,
+    suggestedEnabled: result.suggested,
+    message: `已更新模型目录 · 新增 ${result.added}，更新 ${result.updated}，未再出现 ${result.missing}`,
+    items: modelStore.list({ providerId, includeMissing: true }),
+  } satisfies ModelSyncResult);
+});
+
+api.post("/providers/:providerId/models", async (c) => {
+  const providerId = c.req.param("providerId");
+  const provider = requireProvider(providerId);
+  const body = modelCreateSchema.parse(await c.req.json());
+  if (modelStore.find(providerId, body.id)) {
+    throw new ApiError(409, "MODEL_EXISTS", "该模型已在目录中");
+  }
+  const kind = body.kind === "unknown" ? "unknown" : body.kind;
+  const modes = kind === "unknown" ? [] : body.modes;
+  const info = modelStore.upsert({
+    providerId,
+    modelId: body.id,
+    label: body.label || body.id,
+    kind,
+    modes,
+    capabilities: capabilitiesFor(kind, provider.kind),
+    source: "manual",
+    enabled: body.enabled ?? kind !== "unknown",
+    userEdited: true,
+    status: kind === "unknown" ? "unverified" : "ready",
+  });
+  return c.json(info, 201);
+});
+
+api.patch("/providers/:providerId/models/:modelId", async (c) => {
+  const providerId = c.req.param("providerId");
+  const provider = requireProvider(providerId);
+  const modelId = c.req.param("modelId");
+  if (!modelStore.find(providerId, modelId)) throw new ApiError(404, "MODEL_NOT_FOUND", "模型不存在");
+  const body = modelUpdateSchema.parse(await c.req.json());
+  const capabilities =
+    body.kind && body.kind !== modelStore.find(providerId, modelId)?.kind
+      ? capabilitiesFor(body.kind, provider.kind)
+      : undefined;
+  const info = modelStore.update(providerId, modelId, {
+    ...body,
+    ...(capabilities ? { capabilities } : {}),
+    userEdited: true,
+  });
+  return c.json(info);
+});
+
+api.post("/providers/:providerId/models/:modelId/verify", async (c) => {
+  const providerId = c.req.param("providerId");
+  requireProvider(providerId);
+  const modelId = c.req.param("modelId");
+  const model = modelStore.find(providerId, modelId);
+  if (!model) throw new ApiError(404, "MODEL_NOT_FOUND", "模型不存在");
+  const resolved = providerStore.getResolved(providerId)!;
+  const adapter = createAdapter(resolved);
+  let reachable = false;
+  let message = "本地目录模型 · 未发起任何生成请求";
+  if (adapter.listModels) {
+    try {
+      const models = await adapter.listModels();
+      reachable = models.some((item) => item.id === modelId);
+      message = reachable ? `远程目录中找到模型（${models.length} 个候选）` : "远程模型列表中未找到该模型";
+    } catch (error) {
+      message = `远程目录不可用：${(error as Error).message}`;
+    }
+  }
+  const info = modelStore.update(providerId, modelId, {
+    status: reachable ? "ready" : "unverified",
+    lastError: reachable ? null : message,
+  });
+  return c.json({ ok: reachable, message, model: info });
+});
+
+api.delete("/providers/:providerId/models/:modelId", (c) => {
+  const providerId = c.req.param("providerId");
+  requireProvider(providerId);
+  const modelId = c.req.param("modelId");
+  try {
+    if (!modelStore.remove(providerId, modelId)) throw new ApiError(404, "MODEL_NOT_FOUND", "模型不存在");
+  } catch (error) {
+    if ((error as Error).message.startsWith("MODEL_IN_USE")) {
+      throw new ApiError(409, "MODEL_IN_USE", (error as Error).message.replace("MODEL_IN_USE: ", ""));
+    }
+    throw error;
+  }
+  return c.body(null, 204);
+});
+
+api.get("/model-routes", (c) => {
+  return c.json({ items: modelStore.listRoutes() } satisfies ModelRoutesResponse);
+});
+
+api.put("/model-routes/:mode", async (c) => {
+  const mode = generationModeSchema.parse(c.req.param("mode"));
+  const body = z.object({ providerId: z.string().min(1).max(32), modelId: z.string().min(1).max(200) }).parse(
+    await c.req.json()
+  );
+  const provider = providerStore.get(body.providerId);
+  if (!provider) throw new ApiError(404, "PROVIDER_NOT_FOUND", "Provider 不存在");
+  const model = modelStore.find(body.providerId, body.modelId);
+  if (!model) throw new ApiError(404, "MODEL_NOT_FOUND", "模型不在目录中，请先获取或添加");
+  const force = c.req.query("force") === "1";
+  if (!force && (!model.enabled || model.status === "missing" || !model.modes.includes(mode))) {
+    throw new ApiError(422, "MODEL_ROUTE_INVALID", "该模型未启用、已下架或不支持当前模式");
+  }
+  const route = modelStore.setRoute(mode, body.providerId, body.modelId);
+  return c.json(route);
 });
 
 const payloadTooLarge = (message: string) => (c: { json: (body: unknown, status: 413) => Response }) =>
@@ -429,21 +785,148 @@ api.post("/uploads", async (c) => {
   if (projectId && !projectStore.get(projectId)) {
     throw new ApiError(404, "PROJECT_NOT_FOUND", "项目不存在");
   }
+  const tags = typeof body.tags === "string" ? body.tags.split(/[,\n]/).map((tag) => tag.trim()).filter(Boolean) : [];
   try {
     const asset = await storeImageUpload(file, purpose, projectId);
-    return c.json(asset, 201);
+    if (tags.length > 0) assetStore.setTags(asset.id, tags);
+    const detail = assetStore.getDetail(asset.id);
+    return c.json(detail || asset, 201);
   } catch (error) {
     const err = error as Error & { code?: string; status?: number };
     throw new ApiError(err.status || 422, err.code || "UPLOAD_FAILED", err.message);
   }
 });
 
-api.get("/assets", (c) => c.json({ items: assetStore.list({ projectId: c.req.query("projectId") }) }));
+/* ------------------------- asset library ---------------------------- */
+
+/** Stream a stored file as an attachment-safe response (no Range needed here). */
+function serveLocalFile(c: Context, file: string, mime: string) {
+  const stat = fs.statSync(file);
+  c.header("Content-Type", mime);
+  c.header("Content-Length", String(stat.size));
+  c.header("Accept-Ranges", "bytes");
+  c.header("Cache-Control", "private, max-age=86400");
+  c.header("X-Content-Type-Options", "nosniff");
+  return c.body(Readable.toWeb(fs.createReadStream(file)) as ReadableStream, 200);
+}
+
+api.get("/assets", (c) => {
+  const query = c.req.query();
+  const page = assetStore.search({
+    projectId: query.projectId || undefined,
+    kind: query.kind || undefined,
+    source: query.source || undefined,
+    tag: query.tag ? query.tag.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined,
+    unused: query.unused === "1",
+    duplicate: query.duplicate === "1",
+    q: query.q || undefined,
+    from: query.from || undefined,
+    to: query.to || undefined,
+    cursor: query.cursor || undefined,
+    limit: Number(query.limit || 24),
+    sort: (query.sort as "newest" | "oldest" | "size" | "name") || undefined,
+  });
+  return c.json(page);
+});
+
+api.get("/assets/facets", (c) => c.json(assetStore.facets()));
+
+api.get("/assets/:assetId", (c) => {
+  const asset = assetStore.getDetail(c.req.param("assetId"));
+  if (!asset) throw new ApiError(404, "ASSET_NOT_FOUND", "素材不存在");
+  return c.json(asset);
+});
+
+api.patch("/assets/:assetId", async (c) => {
+  const id = c.req.param("assetId");
+  if (!assetStore.get(id)) throw new ApiError(404, "ASSET_NOT_FOUND", "素材不存在");
+  const body = z
+    .object({
+      originalName: z.string().max(160).optional(),
+      projectId: z.string().max(80).nullable().optional(),
+      tags: z.array(z.string().max(24)).max(8).optional(),
+    })
+    .parse(await c.req.json());
+  if (body.projectId && !projectStore.get(body.projectId)) {
+    throw new ApiError(404, "PROJECT_NOT_FOUND", "项目不存在");
+  }
+  if (body.tags !== undefined) assetStore.setTags(id, body.tags);
+  const asset = assetStore.updateMeta(id, { originalName: body.originalName, projectId: body.projectId });
+  return c.json(asset);
+});
 
 api.delete("/assets/:assetId", (c) => {
-  const removed = assetStore.remove(c.req.param("assetId"));
-  if (!removed) throw new ApiError(404, "ASSET_NOT_FOUND", "素材不存在");
+  const id = c.req.param("assetId");
+  if (!assetStore.get(id)) throw new ApiError(404, "ASSET_NOT_FOUND", "素材不存在");
+  const running = assetUsageStore.countRunning(id);
+  if (running > 0) {
+    throw new ApiError(409, "ASSET_IN_USE", `有 ${running} 个任务正在使用该素材，完成后再删除`);
+  }
+  const usage = assetUsageStore.countForAsset(id);
+  const force = c.req.query("force") === "1";
+  if (usage > 0 && !force) {
+    throw new ApiError(409, "ASSET_REFERENCED", `该素材被 ${usage} 个任务引用，确认后再删除`, {
+      details: { usageCount: usage },
+    });
+  }
+  assetStore.softDelete(id);
+  console.log(`[assets] deleted ${id} (usage=${usage})`);
   return c.body(null, 204);
+});
+
+api.post("/assets/bulk", async (c) => {
+  const body = z
+    .object({
+      action: z.enum(["move_project", "add_tags", "remove_tags", "delete"]),
+      ids: z.array(z.string().max(80)).min(1).max(100),
+      projectId: z.string().max(80).nullable().optional(),
+      tags: z.array(z.string().max(24)).max(20).optional(),
+    })
+    .parse(await c.req.json());
+  const result = { updated: 0, skipped: 0, failed: [] as Array<{ id: string; code: string; message: string }> };
+  if (body.action === "move_project" && body.projectId && !projectStore.get(body.projectId)) {
+    throw new ApiError(404, "PROJECT_NOT_FOUND", "项目不存在");
+  }
+  for (const id of body.ids) {
+    if (!assetStore.get(id)) {
+      result.failed.push({ id, code: "ASSET_NOT_FOUND", message: "素材不存在" });
+      continue;
+    }
+    if (body.action === "move_project") {
+      assetStore.updateMeta(id, { projectId: body.projectId ?? null });
+      result.updated += 1;
+    } else if (body.action === "add_tags") {
+      const { added, skipped } = assetStore.addTags(id, body.tags || []);
+      result.updated += added.length > 0 ? 1 : 0;
+      result.skipped += skipped;
+    } else if (body.action === "remove_tags") {
+      result.updated += assetStore.removeTags(id, body.tags || []) > 0 ? 1 : 0;
+    } else if (body.action === "delete") {
+      if (assetUsageStore.countRunning(id) > 0) {
+        result.failed.push({ id, code: "ASSET_IN_USE", message: "有任务正在使用该素材" });
+        continue;
+      }
+      if (assetStore.softDelete(id)) result.updated += 1;
+    }
+  }
+  return c.json(result);
+});
+
+api.get("/assets/:assetId/usage", (c) => {
+  const id = c.req.param("assetId");
+  if (!assetStore.get(id)) throw new ApiError(404, "ASSET_NOT_FOUND", "素材不存在");
+  return c.json({ items: assetUsageStore.listForAsset(id) });
+});
+
+api.get("/assets/:assetId/download", (c) => {
+  const asset = assetStore.get(c.req.param("assetId"));
+  if (!asset) throw new ApiError(404, "ASSET_NOT_FOUND", "素材不存在");
+  const relative = asset.url.replace(/^\/media\/assets\//, "");
+  const file = safeMediaFile("assets", relative);
+  if (!file) throw new ApiError(410, "ASSET_FILE_MISSING", "素材文件不存在或已清理");
+  const name = encodeURIComponent(asset.originalName || `${asset.id}.${extensionMime(file).split("/")[1] || "bin"}`);
+  c.header("Content-Disposition", `attachment; filename*=UTF-8''${name}`);
+  return serveLocalFile(c, file, extensionMime(file));
 });
 
 api.post("/generations", async (c) => {
@@ -488,6 +971,24 @@ api.post("/generations", async (c) => {
     throw new ApiError(422, "PROMPT_REQUIRED", "提示词不能为空");
   }
 
+  // Model catalog validation: only enforced when the model exists in the
+  // catalog, so legacy configs and unseeded providers keep working.
+  const requestModelId =
+    parsed.modelId ||
+    (parsed.mode === "text-to-image" || parsed.mode === "image-to-image" ? provider.imageModel : provider.videoModel);
+  const catalogModel = modelStore.find(parsed.providerId, requestModelId);
+  if (catalogModel) {
+    if (!catalogModel.enabled) {
+      throw new ApiError(422, "MODEL_NOT_READY", "当前模型未启用，请在模型库启用后再生成");
+    }
+    if (catalogModel.status === "missing") {
+      throw new ApiError(422, "MODEL_MISSING", "当前模型已下架，请重新获取或更换模型");
+    }
+    if (!catalogModel.modes.includes(parsed.mode)) {
+      throw new ApiError(422, "MODEL_MODE_UNSUPPORTED", "当前模型不支持该生成模式，请更换模型");
+    }
+  }
+
   const idempotencyKey = c.req.header("idempotency-key") || parsed.clientRequestId;
   const existing = jobStore.findByClientRequestId(idempotencyKey);
   if (existing) {
@@ -529,6 +1030,7 @@ api.post("/generations", async (c) => {
     throw new ApiError(404, "SESSION_NOT_FOUND", "会话不存在");
   }
   const job = jobStore.create(request);
+  if (catalogModel) modelStore.markUsed(parsed.providerId, requestModelId);
   console.log(
     `[jobs] enqueued ${job.id} mode=${job.mode} type=${job.generationType} est=${job.estimatedTokens} tokens`
   );
@@ -615,6 +1117,116 @@ api.get("/generations/:id/events", (c) => {
 });
 
 api.get("/usage", (c) => c.json(jobStore.usageSummary(c.req.query("projectId") || undefined)));
+
+
+/* ------------------------------ works ------------------------------- */
+
+const workUpdateSchema = z.object({
+  title: z.string().max(80).optional(),
+  favorite: z.boolean().optional(),
+  projectId: z.string().max(80).nullable().optional(),
+});
+
+const workBulkSchema = z.object({
+  action: z.enum(["favorite", "unfavorite", "move_project", "delete", "save_to_assets"]),
+  ids: z.array(z.string().max(120)).min(1).max(100),
+  projectId: z.string().max(80).nullable().optional(),
+});
+
+api.get("/works", (c) => {
+  const query = c.req.query();
+  return c.json(
+    workStore.list({
+      projectId: query.projectId || undefined,
+      mode: query.mode || undefined,
+      kind: query.kind || undefined,
+      providerId: query.providerId || undefined,
+      modelId: query.modelId || undefined,
+      favorite: query.favorite === "1",
+      q: query.q || undefined,
+      from: query.from || undefined,
+      to: query.to || undefined,
+      cursor: query.cursor || undefined,
+      limit: Number(query.limit || 24),
+      sort: (query.sort as "newest" | "oldest" | "tokens" | "duration") || undefined,
+    })
+  );
+});
+
+api.get("/works/facets", (c) => c.json(workStore.facets()));
+
+api.post("/works/bulk", async (c) => {
+  const body = workBulkSchema.parse(await c.req.json());
+  if (body.action === "move_project" && body.projectId && !projectStore.get(body.projectId)) {
+    throw new ApiError(404, "PROJECT_NOT_FOUND", "项目不存在");
+  }
+  if (body.action === "save_to_assets") {
+    let created = 0;
+    const failed: Array<{ id: string; code: string; message: string }> = [];
+    for (const id of body.ids) {
+      const work = workStore.get(id);
+      if (!work) {
+        failed.push({ id, code: "WORK_NOT_FOUND", message: "作品不存在" });
+        continue;
+      }
+      try {
+        const result = await importWorkAsAsset(work);
+        if (result.created) created += 1;
+      } catch (error) {
+        const err = error as { code?: string; status?: number; message?: string };
+        failed.push({ id, code: err.code || "WORK_SAVE_FAILED", message: err.message || "另存失败" });
+      }
+    }
+    return c.json({ updated: body.ids.length - failed.length, created, failed });
+  }
+  return c.json(workStore.bulk(body.action, body.ids, body.projectId));
+});
+
+api.get("/works/:workId", (c) => {
+  const work = workStore.get(c.req.param("workId"));
+  if (!work) throw new ApiError(404, "WORK_NOT_FOUND", "作品不存在");
+  return c.json(work);
+});
+
+api.patch("/works/:workId", async (c) => {
+  const id = c.req.param("workId");
+  if (!workStore.get(id)) throw new ApiError(404, "WORK_NOT_FOUND", "作品不存在");
+  const body = workUpdateSchema.parse(await c.req.json());
+  if (body.projectId && !projectStore.get(body.projectId)) {
+    throw new ApiError(404, "PROJECT_NOT_FOUND", "项目不存在");
+  }
+  const work = workStore.update(id, body);
+  return c.json(work);
+});
+
+api.delete("/works/:workId", (c) => {
+  if (!workStore.softDelete(c.req.param("workId"))) throw new ApiError(404, "WORK_NOT_FOUND", "作品不存在");
+  return c.body(null, 204);
+});
+
+api.post("/works/:workId/save-to-assets", async (c) => {
+  const work = workStore.get(c.req.param("workId"));
+  if (!work) throw new ApiError(404, "WORK_NOT_FOUND", "作品不存在");
+  try {
+    const result = await importWorkAsAsset(work);
+    return c.json(result, result.created ? 201 : 200);
+  } catch (error) {
+    const err = error as { code?: string; status?: number; message?: string };
+    throw new ApiError(err.status || 500, err.code || "WORK_SAVE_FAILED", err.message || "另存为素材失败");
+  }
+});
+
+api.get("/works/:workId/download", (c) => {
+  const work = workStore.get(c.req.param("workId"));
+  if (!work) throw new ApiError(404, "WORK_NOT_FOUND", "作品不存在");
+  const relative = work.url.replace(/^\/media\/outputs\//, "");
+  const file = safeMediaFile("outputs", relative);
+  if (!file) throw new ApiError(410, "WORK_FILE_MISSING", "作品文件不存在或已清理");
+  const ext = path.extname(file) || (work.kind === "video" ? ".mp4" : ".jpg");
+  const name = encodeURIComponent(`${work.title || work.id}${ext}`);
+  c.header("Content-Disposition", `attachment; filename*=UTF-8''${name}`);
+  return serveLocalFile(c, file, extensionMime(file));
+});
 
 
 /* ----------------------------- projects ----------------------------- */

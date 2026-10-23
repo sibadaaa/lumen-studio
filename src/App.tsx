@@ -9,20 +9,27 @@ import {
 } from "lucide-react";
 import { ApiModal } from "./components/ApiModal";
 import { ToastViewport, type ToastItem } from "./components/Toast";
+import type { ModelInfo, ModelRoute } from "../shared/contracts";
 import { AgentWorkspace } from "./pages/AgentWorkspace";
+import { AssetsLibrary } from "./pages/AssetsLibrary";
+import { ModelsPage } from "./pages/ModelsPage";
 import { ProjectPage } from "./pages/ProjectPage";
+import { WorksLibrary } from "./pages/WorksLibrary";
 import { StudioPage } from "./studio/StudioPage";
 import { StudioProvider } from "./studio/StudioContext";
 import { WorkspaceHome } from "./pages/WorkspaceHome";
 import { api } from "./lib/api";
 import { compactTokens, formatTokens } from "./lib/tokens";
-import type { Page, StudioRuntime } from "./types";
+import type { Page, StudioIntent, StudioRuntime } from "./types";
 
 const PAGE_LABELS: Record<Page, string> = {
   workspace: "工作区",
   project: "项目",
   studio: "创作台",
   agent: "Agent 工作区",
+  works: "作品库",
+  assets: "素材库",
+  models: "API 与模型",
 };
 
 const OFFLINE_RUNTIME: StudioRuntime = {
@@ -30,6 +37,8 @@ const OFFLINE_RUNTIME: StudioRuntime = {
   activeProviderId: null,
   provider: null,
   providers: [],
+  models: [],
+  routes: [],
   ffmpeg: false,
   version: "0.2.0",
   loading: true,
@@ -44,6 +53,8 @@ export default function App() {
   const [apiOpen, setApiOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [runtime, setRuntime] = useState<StudioRuntime>(OFFLINE_RUNTIME);
+  const [libraryProjectId, setLibraryProjectId] = useState<string | null>(null);
+  const [studioIntent, setStudioIntent] = useState<StudioIntent | null>(null);
 
   const toast = useCallback((message: string, type: "default" | "success" = "default") => {
     const id = Date.now() + Math.random();
@@ -53,22 +64,42 @@ export default function App() {
     }, 2800);
   }, []);
 
-  const refreshRuntime = useCallback(async () => {
+  const refreshRuntime = useCallback(async (options: { catalog?: boolean } = {}) => {
     setRuntime((prev) => ({ ...prev, loading: true }));
     try {
       const data = await api.providers();
       const provider = data.items.find((item) => item.id === data.activeProviderId) || null;
+      let models = [] as ModelInfo[];
+      let routes = [] as ModelRoute[];
+      try {
+        const [modelData, routeData] = await Promise.all([api.models("?enabled=0"), api.modelRoutes()]);
+        models = modelData.items;
+        routes = routeData.items;
+      } catch {
+        // Catalog is optional; the studio falls back to provider image/video models.
+      }
+      void options;
       setRuntime({
         online: true,
         activeProviderId: data.activeProviderId,
         provider,
         providers: data.items,
+        models,
+        routes,
         ffmpeg: data.backend.ffmpeg,
         version: data.backend.version,
         loading: false,
       });
     } catch {
-      setRuntime((prev) => ({ ...prev, online: false, loading: false, provider: null, activeProviderId: null }));
+      setRuntime((prev) => ({
+        ...prev,
+        online: false,
+        loading: false,
+        provider: null,
+        activeProviderId: null,
+        models: [],
+        routes: [],
+      }));
     }
   }, []);
 
@@ -98,11 +129,12 @@ export default function App() {
     if (page === "project") return { label: "工作区", target: "workspace" as Page };
     if (page === "studio") return { label: "项目", target: "project" as Page };
     if (page === "agent") return { label: "创作台", target: "studio" as Page };
+    if (page === "works" || page === "assets" || page === "models") return { label: "工作区", target: "workspace" as Page };
     return null;
   }, [page]);
 
   const crumbs = useMemo(() => {
-    const items: { label: string; page?: Page }[] = [{ label: "工作区", page: "workspace" }];
+    const items: { label: string; page?: Page }[] = [{ label: "工作区", page: page === "workspace" ? undefined : "workspace" }];
     if (page === "workspace") items.push({ label: "全部项目" });
     if (page === "project") items.push({ label: projectName });
     if (page === "studio") items.push({ label: projectName, page: "project" }, { label: "创作台" });
@@ -112,8 +144,13 @@ export default function App() {
         { label: "创作台", page: "studio" },
         { label: "Agent 工作区" }
       );
+    if (page === "works") items.push({ label: "作品库" });
+    if (page === "assets") items.push({ label: "素材库" });
+    if (page === "models") items.push({ label: "API 与模型" });
     return items;
   }, [page, projectName]);
+
+  const goPage = (target: Page) => setPage(target);
 
   const goWorkspace = () => setPage("workspace");
 
@@ -130,19 +167,24 @@ export default function App() {
           </button>
 
           <nav className="rail-nav" aria-label="主导航">
-            <button className="rail-item is-active" data-tip="工作区" aria-label="工作区" onClick={goWorkspace}>
-              <LayoutDashboard size={21} strokeWidth={1.4} />
-              <span className="rail-indicator" />
-            </button>
-            <button className="rail-item" data-tip="作品库" aria-label="作品库" onClick={() => toast("作品库将在下一阶段接入")}>
-              <LayoutGrid size={21} strokeWidth={1.4} />
-            </button>
-            <button className="rail-item" data-tip="素材库" aria-label="素材库" onClick={() => toast("素材库将在下一阶段接入")}>
-              <FolderOpen size={21} strokeWidth={1.4} />
-            </button>
-            <button className="rail-item" data-tip="API 与模型" aria-label="API 与模型" onClick={() => setApiOpen(true)}>
-              <Plug size={21} strokeWidth={1.4} />
-            </button>
+            {([
+              ["workspace", "工作区", LayoutDashboard],
+              ["works", "作品库", LayoutGrid],
+              ["assets", "素材库", FolderOpen],
+              ["models", "API 与模型", Plug],
+            ] as const).map(([target, label, Icon]) => (
+              <button
+                key={target}
+                className={`rail-item ${page === target ? "is-active" : ""}`}
+                data-tip={label}
+                aria-label={label}
+                aria-current={page === target ? "page" : undefined}
+                onClick={() => goPage(target)}
+              >
+                <Icon size={21} strokeWidth={1.4} />
+                {target === "workspace" && <span className="rail-indicator" />}
+              </button>
+            ))}
           </nav>
 
           <div className="rail-bottom">
@@ -175,7 +217,7 @@ export default function App() {
               <span className="autosave"><i />已保存</span>
             </div>
             <div className="topbar-right">
-              <button className={`api-pill ${runtime.online ? "is-online" : ""}`} onClick={() => setApiOpen(true)} aria-haspopup="dialog">
+              <button className={`api-pill ${runtime.online ? "is-online" : ""}`} onClick={() => goPage("models")} aria-haspopup="dialog" title="打开 API 与模型">
                 <span className="live-dot" />
                 <span>{runtime.online ? (runtime.provider?.kind === "mock" ? "本地演示" : runtime.provider?.label || "未配置 Provider") : "Mock 生成"}</span>
                 <span className="pill-divider" />
@@ -225,13 +267,43 @@ export default function App() {
                 setAgentSessionId(sessionId || null);
                 setPage("agent");
               }}
+              onOpenAssets={(id) => {
+                setLibraryProjectId(id);
+                setPage("assets");
+              }}
               toast={toast}
             />
+          )}
+          {page === "works" && (
+            <WorksLibrary
+              projectId={libraryProjectId}
+              onOpenStudio={(intent) => {
+                setStudioIntent(intent);
+                setPage("studio");
+              }}
+              toast={toast}
+            />
+          )}
+          {page === "assets" && (
+            <AssetsLibrary
+              projectId={libraryProjectId}
+              onProjectChange={setLibraryProjectId}
+              onUseInStudio={(intent) => {
+                setStudioIntent(intent);
+                setPage("studio");
+              }}
+              toast={toast}
+            />
+          )}
+          {page === "models" && (
+            <ModelsPage runtime={runtime} onRefresh={refreshRuntime} onOpenApi={() => setApiOpen(true)} toast={toast} />
           )}
 
           <StudioProvider
             runtime={runtime}
             projectId={projectId}
+            intent={page === "studio" ? studioIntent : null}
+            onIntentApplied={() => setStudioIntent(null)}
             onTokensUsed={(tokens) => setSessionTokens((prev) => prev + tokens)}
             toast={toast}
           >

@@ -25,6 +25,7 @@ import { dimensionsFor } from "./estimate.js";
 import { isTerminal, jobStore, type StoredJob } from "./store.js";
 import { providerStore } from "../storage/providers.js";
 import { assetStore } from "../storage/assets.js";
+import { workStore } from "../storage/works.js";
 
 class JobCanceledError extends Error {
   constructor() {
@@ -574,7 +575,7 @@ export class JobRunner {
 
   private complete(job: StoredJob, outputs: MediaAsset[], usage: TokenUsage | undefined, stage: string) {
     const finalUsage = usage || fallbackUsage(job, "heuristic");
-    jobStore.update(job.id, {
+    const updated = jobStore.update(job.id, {
       status: "succeeded",
       progress: 100,
       stage,
@@ -583,6 +584,16 @@ export class JobRunner {
       finishedAt: now(),
       shots: job.shots.map((shot) => ({ ...shot, status: "succeeded", progress: 100 })),
     });
+    if (updated) {
+      try {
+        workStore.materialize(updated);
+      } catch (error) {
+        // Materialization must never turn a succeeded task into a failed one;
+        // startup reconciliation will retry the missing works rows.
+        console.error(`[works] materialize failed for ${job.id}:`, (error as Error).message);
+        jobStore.appendLog(job.id, `work materialize failed: ${(error as Error).message}`);
+      }
+    }
     jobStore.appendLog(job.id, `succeeded · ${finalUsage.totalTokens} tokens (${finalUsage.source})`);
   }
 

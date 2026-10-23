@@ -16,6 +16,7 @@ export function Inspector({ open, onClose, toast }: Props) {
   const studio = useStudio();
   const [widthInput, setWidthInput] = useState(String(studio.customSize.width));
   const [heightInput, setHeightInput] = useState(String(studio.customSize.height));
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   useEffect(() => {
     setWidthInput(String(studio.customSize.width));
@@ -60,15 +61,63 @@ export function Inspector({ open, onClose, toast }: Props) {
       <div className="inspector-scroll">
         <div className="field-group">
           <div className="field-label">模型 <span className="recommend">推荐</span></div>
-          <button className="model-select" onClick={() => toast("模型选择将在下一阶段接入")}>
-            <span className="model-glyph">
-              <svg viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="7.6" stroke="currentColor" strokeWidth="1.2" /><path d="M11 3.4a7.6 7.6 0 0 0 0 15.2 7.6 7.6 0 0 0 0-15.2Z" fill="currentColor" opacity=".28" /></svg>
-            </span>
-            <span className="model-info"><strong>{MODES[studio.mode].model}</strong><small>{MODES[studio.mode].modelDesc}</small></span>
-            <ChevronDown className="chevron" size={14} />
-          </button>
+          <div className="model-picker">
+            <button
+              className="model-select"
+              aria-haspopup="listbox"
+              aria-expanded={modelMenuOpen}
+              onClick={() => setModelMenuOpen((prev) => !prev)}
+            >
+              <span className="model-glyph">
+                <svg viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="7.6" stroke="currentColor" strokeWidth="1.2" /><path d="M11 3.4a7.6 7.6 0 0 0 0 15.2 7.6 7.6 0 0 0 0-15.2Z" fill="currentColor" opacity=".28" /></svg>
+              </span>
+              <span className="model-info">
+                <strong>{studio.selectedModel?.label || MODES[studio.mode].model}</strong>
+                <small>
+                  {studio.selectedModel
+                    ? `${studio.selectedModel.providerId} · ${studio.selectedModel.kind === "image" ? "图像" : studio.selectedModel.kind === "video" ? "视频" : "待确认"}`
+                    : MODES[studio.mode].modelDesc}
+                </small>
+              </span>
+              <ChevronDown className="chevron" size={14} />
+            </button>
+            {modelMenuOpen && (
+              <ul className="model-picker-list" role="listbox" aria-label="选择模型">
+                {studio.availableModels.length === 0 && (
+                  <li className="model-picker-empty">
+                    <span>当前模式暂无可用模型</span>
+                    <small>在「API 与模型」中连接并获取模型</small>
+                  </li>
+                )}
+                {studio.availableModels.map((model) => (
+                  <li key={model.id}>
+                    <button
+                      role="option"
+                      aria-selected={studio.selectedModel?.id === model.id}
+                      className={studio.selectedModel?.id === model.id ? "is-active" : ""}
+                      onClick={() => {
+                        studio.setModel(model.id);
+                        setModelMenuOpen(false);
+                      }}
+                    >
+                      <span className="model-option-main">
+                        <strong>{model.label}</strong>
+                        <small>{model.providerId} · {model.kind === "image" ? "图像" : model.kind === "video" ? "视频" : "待确认"}</small>
+                      </span>
+                      {model.lastUsedAt && <em>最近使用</em>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="model-tags">
-            {MODES[studio.mode].tags.map((tag) => <span key={tag}>{tag}</span>)}
+            {(studio.selectedModel
+              ? [studio.selectedModel.providerId, studio.selectedModel.kind === "image" ? "图像" : studio.selectedModel.kind === "video" ? "视频" : "待确认"]
+              : MODES[studio.mode].tags
+            ).map((tag) => (
+              <span key={tag}>{tag}</span>
+            ))}
           </div>
         </div>
 

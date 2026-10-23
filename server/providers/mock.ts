@@ -44,6 +44,10 @@ export class MockAdapter implements ProviderAdapter {
     this.config = config;
   }
 
+  async listModels() {
+    return [{ id: "lumen-mock-image" }, { id: "lumen-mock-video" }];
+  }
+
   async testConnection(): Promise<ProviderTestResult> {
     const start = Date.now();
     const available = await ffmpegAvailable();

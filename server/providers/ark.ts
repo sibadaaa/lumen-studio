@@ -49,27 +49,34 @@ export class ArkAdapter implements ProviderAdapter {
     };
   }
 
+  async listModels() {
+    const response = await requestJson<{ data?: Array<{ id?: string; owned_by?: string }>; items?: Array<{ id?: string }> }>(
+      joinUrl(this.config.baseUrl, "/models"),
+      { headers: this.headers(), timeoutMs: 12_000, maxRetries: 1, providerLabel: "火山方舟" }
+    );
+    const rows = response.data || response.items || [];
+    return rows
+      .map((item) => ({ id: String(item.id || "").trim().slice(0, 200), ownedBy: (item as { owned_by?: string }).owned_by }))
+      .filter((item) => item.id.length > 0);
+  }
+
   async testConnection(): Promise<ProviderTestResult> {
     const started = Date.now();
     try {
-      const response = await requestJson<{ data?: Array<{ id?: string }>; items?: Array<{ id?: string }> }>(
-        joinUrl(this.config.baseUrl, "/models"),
-        { headers: this.headers(), timeoutMs: 12_000, maxRetries: 1, providerLabel: "火山方舟" }
-      );
-      const models = (response.data || response.items || []).map((item) => item.id).filter(Boolean) as string[];
+      const models = await this.listModels();
       return {
         ok: true,
         latencyMs: Date.now() - started,
         message: models.length ? `连接正常 · 探测到 ${models.length} 个模型` : "连接正常",
-        models,
+        models: models.map((model) => model.id),
       };
     } catch (error) {
       if (error instanceof ProviderError) {
-        if (error.status === 404) {
+        if (error.status === 404 || error.status === 405) {
           return {
             ok: true,
             latencyMs: Date.now() - started,
-            message: "网关可达（该部署未开放 /models，生成接口仍可用）",
+            message: "网关可达（该部署未开放 /models，可手动添加模型）",
           };
         }
         return {

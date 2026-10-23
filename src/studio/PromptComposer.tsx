@@ -1,16 +1,20 @@
-import { useRef } from "react";
-import { Plus, SlidersHorizontal, Sparkles, Wand2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { FolderOpen, Plus, SlidersHorizontal, Wand2 } from "lucide-react";
 import { MODES } from "../data/mock";
 import { formatTokens } from "../lib/tokens";
+import { AssetPickerDialog } from "../assets/AssetPickerDialog";
+import type { AssetRole } from "../../shared/contracts";
 import { useStudio } from "./StudioContext";
 
 export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => void }) {
   const studio = useStudio();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const config = MODES[studio.mode];
   const eta = studio.isBoardView
     ? studio.mode === "multi" ? "约 3–4 分钟" : "约 90 秒"
     : config.eta;
+  const pickerRole: AssetRole = studio.mode === "i2v" ? "first_frame" : studio.mode === "multi" ? "shot" : "reference";
 
   const enhance = () => {
     if (studio.prompt.includes("体积光")) {
@@ -45,9 +49,14 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
       <div className="composer-foot">
         <div className="attach-area">
           {config.attach && (
-            <button className="attach-btn" onClick={() => fileRef.current?.click()}>
-              <Plus size={13} /> {config.attachLabel}
-            </button>
+            <>
+              <button className="attach-btn" onClick={() => fileRef.current?.click()}>
+                <Plus size={13} /> {config.attachLabel}
+              </button>
+              <button className="attach-btn is-ghost" onClick={() => setPickerOpen(true)}>
+                <FolderOpen size={13} /> 素材库
+              </button>
+            </>
           )}
           <input
             ref={fileRef}
@@ -87,6 +96,11 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
           <button className="mobile-generate" onClick={studio.generate}>生成</button>
         </div>
       </div>
+      <AssetPickerDialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={(asset) => studio.attachAsset(asset, pickerRole)}
+      />
     </section>
   );
 }

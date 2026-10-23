@@ -1,5 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { GenerationMode, GenerationRequest, GenerationTask, MediaAsset, StoryboardRow } from "../../shared/contracts";
+import type {
+  AssetRole,
+  GenerationMode,
+  GenerationRequest,
+  GenerationTask,
+  LibraryAsset,
+  MediaAsset,
+  ModelInfo,
+  StoryboardRow,
+} from "../../shared/contracts";
 import { api, makeClientRequestId, sleep } from "../lib/api";
 import {
   ANIMATION_HINTS,
@@ -34,9 +43,11 @@ import type {
   HistoryItem,
   Mode,
   Resolution,
+  StudioIntent,
   StudioRuntime,
   View,
 } from "../types";
+import { MODE_BY_CONTRACT } from "../types";
 
 interface Attachment {
   id: string;
@@ -87,6 +98,10 @@ interface StudioContextValue {
   activeHistory: string;
   attachments: Attachment[];
   runtime: StudioRuntime;
+  availableModels: ModelInfo[];
+  selectedModel: ModelInfo | null;
+  setModel: (modelId: string) => void;
+  attachAsset: (asset: LibraryAsset, role?: AssetRole) => void;
   lastOutput: GenerationTask | null;
   activeOutput: GenerationTask | null;
   generationError: string | null;
@@ -155,12 +170,16 @@ export function StudioProvider({
   toast,
   runtime,
   projectId,
+  intent,
+  onIntentApplied,
 }: {
   children: ReactNode;
   onTokensUsed: (tokens: number) => void;
   toast: (message: string, type?: "default" | "success") => void;
   runtime: StudioRuntime;
   projectId?: string;
+  intent?: StudioIntent | null;
+  onIntentApplied?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("t2i");
   const [view, setView] = useState<View>("preview");
@@ -196,6 +215,7 @@ export function StudioProvider({
   const [lastOutput, setLastOutput] = useState<GenerationTask | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [modelOverrides, setModelOverrides] = useState<Partial<Record<Mode, string>>>({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const timerRef = useRef<number | null>(null);
@@ -208,6 +228,39 @@ export function StudioProvider({
   const modeRef = useRef(mode);
   const runtimeRef = useRef(runtime);
   const projectIdRef = useRef(projectId);
+  const modelOverridesRef = useRef(modelOverrides);
+
+  useEffect(() => {
+    modelOverridesRef.current = modelOverrides;
+  }, [modelOverrides]);
+
+  /* -------------------- model catalog selection (M4) -------------------- */
+  const contractMode = API_MODE[mode];
+  const availableModels = useMemo(
+    () => runtime.models.filter((model) => model.enabled && model.status !== "missing" && model.modes.includes(contractMode)),
+    [runtime.models, contractMode]
+  );
+  const route = useMemo(() => runtime.routes.find((item) => item.mode === contractMode) || null, [runtime.routes, contractMode]);
+  const selectedModel = useMemo<ModelInfo | null>(() => {
+    const overrideId = modelOverrides[mode];
+    if (overrideId) {
+      const override = availableModels.find((model) => model.id === overrideId);
+      if (override) return override;
+    }
+    if (route) {
+      const routed = availableModels.find((model) => model.providerId === route.providerId && model.id === route.modelId);
+      if (routed) return routed;
+    }
+    return (
+      availableModels.find((model) => model.providerId === runtime.activeProviderId) ||
+      availableModels[0] ||
+      null
+    );
+  }, [availableModels, route, runtime.activeProviderId, modelOverrides, mode]);
+  const selectedModelRef = useRef<ModelInfo | null>(selectedModel);
+  useEffect(() => {
+    selectedModelRef.current = selectedModel;
+  }, [selectedModel]);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -464,6 +517,80 @@ export function StudioProvider({
     });
   };
 
+  /** Fill a library asset into the current mode without re-uploading. */
+  const attachAsset = (asset: LibraryAsset, role: AssetRole = "reference") => {
+    const url = asset.thumbnailUrl || asset.url;
+    if (role === "shot") {
+      setBoards((prev) => {
+        const rows = prev.multi.rows;
+        const index = rows.findIndex((row) => !row.assetId && !row.img);
+        if (index < 0) return prev;
+        return {
+          ...prev,
+          multi: {
+            ...prev.multi,
+            rows: rows.map((row, i) => (i === index ? { ...row, img: url, assetId: asset.id, uploading: false } : row)),
+          },
+        };
+      });
+      toast("已填入分镜画面", "success");
+      return;
+    }
+    setAttachments((prev) => {
+      const next = [
+        ...prev,
+        { id: `a-${++attachmentSeq}`, url, assetId: asset.id, name: asset.originalName || asset.id, uploading: false, progress: 100 },
+      ];
+      attachmentsRef.current = next;
+      return next;
+    });
+    const label = role === "first_frame" ? "首帧" : role === "last_frame" ? "尾帧" : "参考图";
+    toast(`已从素材库填入${label}`, "success");
+  };
+
+  /** Apply a cross-page intent (from the works or assets library) once. */
+  const applyIntent = (incoming: StudioIntent) => {
+    if (incoming.work) {
+      const work = incoming.work;
+      const nextMode = MODE_BY_CONTRACT[work.mode] || "t2i";
+      setMode(nextMode);
+      setPrompts((prev) => ({ ...prev, [nextMode]: work.prompt || prev[nextMode] }));
+      if (work.params.negativePrompt !== undefined) setNegativePrompt(work.params.negativePrompt);
+      if (typeof work.params.seed === "number" && Number.isFinite(work.params.seed)) setSeed(String(work.params.seed));
+      if (work.params.durationSec && [5, 10, 15].includes(work.params.durationSec)) setDurationState(work.params.durationSec);
+      if (work.params.animationMode && work.params.animationMode !== "live") setAnimationState(work.params.animationMode);
+      if (work.params.resolution && work.params.resolution !== "custom") {
+        setModeResolution((prev) => ({ ...prev, [nextMode]: work.params.resolution as Resolution }));
+      }
+      if (work.params.strength !== undefined) setStrengthState(Math.round(work.params.strength * 100));
+      if (work.modelId) setModelOverrides((prev) => ({ ...prev, [nextMode]: work.modelId }));
+      const restored = work.inputs
+        .filter((input) => input.assetId || (input.url && input.url.startsWith("/media/")))
+        .map((input) => ({
+          id: `a-${++attachmentSeq}`,
+          url: input.url || "",
+          assetId: input.assetId,
+          name: input.role,
+          uploading: false,
+          progress: 100,
+        }));
+      setAttachments(restored);
+      attachmentsRef.current = restored;
+      toast("已回填作品参数，确认后点击生成", "success");
+    } else if (incoming.asset) {
+      attachAsset(incoming.asset, incoming.role || "reference");
+    }
+  };
+
+  const intentRef = useRef(applyIntent);
+  intentRef.current = applyIntent;
+  useEffect(() => {
+    if (!intent) return;
+    intentRef.current(intent);
+    onIntentApplied?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent]);
+
   const replaceBoardImage = (index: number, url: string, assetId?: string) => {
     updateBoardRow(index, { img: url, assetId, uploading: false });
   };
@@ -674,8 +801,13 @@ export function StudioProvider({
       return null;
     }
     const provider = runtimeRef.current.provider;
-    const modelId =
-      currentMode === "t2i" || currentMode === "i2i" ? provider?.imageModel || "lumen-mock-image" : provider?.videoModel || "lumen-mock-video";
+    const fallbackModelId =
+      currentMode === "t2i" || currentMode === "i2i"
+        ? provider?.imageModel || "lumen-mock-image"
+        : provider?.videoModel || "lumen-mock-video";
+    const selected = selectedModelRef.current;
+    const modelId = selected?.id || fallbackModelId;
+    const providerId = selected?.providerId || runtimeRef.current.activeProviderId || "mock";
     const inputs = usable.map((item, index) => ({
       assetId: item.assetId,
       url: item.assetId ? undefined : item.url,
@@ -709,7 +841,7 @@ export function StudioProvider({
       clientRequestId: makeClientRequestId(),
       mode: API_MODE[currentMode],
       generationType: isStoryboard ? "storyboard" : "single",
-      providerId: runtimeRef.current.activeProviderId || "mock",
+      providerId,
       modelId,
       prompt: prompts[currentMode],
       params: {
@@ -886,6 +1018,10 @@ export function StudioProvider({
     activeHistory,
     attachments,
     runtime,
+    availableModels,
+    selectedModel,
+    setModel: (modelId) => setModelOverrides((prev) => ({ ...prev, [modeRef.current]: modelId })),
+    attachAsset,
     lastOutput,
     activeOutput,
     generationError,

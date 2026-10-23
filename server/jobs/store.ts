@@ -9,6 +9,7 @@ import type {
 } from "../../shared/contracts.js";
 import { db } from "../db.js";
 import { estimateGenerationTokens, estimateSeconds } from "./estimate.js";
+import { assetUsageStore } from "../storage/asset-usage.js";
 
 export interface InternalJobState {
   canceled: boolean;
@@ -257,8 +258,26 @@ export class JobStore {
       null,
       job.updatedAt
     );
+    try {
+      // Record which upload assets this task consumes; failure must not break
+      // task creation. Startup reconciliation covers any missed rows.
+      assetUsageStore.recordForJob(job);
+    } catch {
+      /* ignore */
+    }
     this.emit(job);
     return job;
+  }
+
+  /** Raw jobs including internal state, for backfill and reconciliation. */
+  listInternal(options: { status?: string; limit?: number } = {}): StoredJob[] {
+    const limit = Math.min(500, options.limit || 200);
+    const rows = options.status
+      ? (db
+          .prepare("SELECT * FROM generations WHERE status = ? ORDER BY created_at DESC LIMIT ?")
+          .all(options.status, limit) as unknown as JobRow[])
+      : (db.prepare("SELECT * FROM generations ORDER BY created_at DESC LIMIT ?").all(limit) as unknown as JobRow[]);
+    return rows.map(rowToJob);
   }
 
   private emitterPayload(job: StoredJob) {

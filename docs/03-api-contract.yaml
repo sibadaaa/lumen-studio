@@ -440,6 +440,340 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 
+  /model-routes:
+    get:
+      tags: [Models]
+      operationId: listModelRoutes
+      summary: 五种生成模式的默认模型路由
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModelRoute" }
+
+  /model-routes/{mode}:
+    put:
+      tags: [Models]
+      operationId: setModelRoute
+      summary: 设置某模式的默认模型（?force=1 可保存能力不完整的模型）
+      parameters:
+        - name: mode
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/GenerationMode" }
+        - name: force
+          in: query
+          schema: { type: string, enum: ["1"] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerId, modelId]
+              properties:
+                providerId: { type: string }
+                modelId: { type: string }
+      responses:
+        "200":
+          description: 已保存
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelRoute" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/BadRequest" }
+
+  /providers/{providerId}/models:
+    get:
+      tags: [Models]
+      operationId: listProviderModels
+      summary: 读取 Provider 的本地模型目录
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - name: enabled
+          in: query
+          schema: { type: string, enum: ["0", "1"] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Model" }
+    post:
+      tags: [Models]
+      operationId: addProviderModel
+      summary: 手工添加模型（网关未开放 /models 或使用推理接入点时）
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, kind, modes]
+              properties:
+                id: { type: string, maxLength: 200 }
+                label: { type: string }
+                kind: { type: string, enum: [image, video, unknown] }
+                modes:
+                  type: array
+                  items: { $ref: "#/components/schemas/GenerationMode" }
+                enabled: { type: boolean }
+      responses:
+        "201":
+          description: 已添加
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Model" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /providers/{providerId}/models/sync:
+    post:
+      tags: [Models]
+      operationId: syncProviderModels
+      summary: 拉取远程模型列表并更新本地目录（不调用生成接口、不消耗 tokens）
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      responses:
+        "200":
+          description: 同步结果；网关未开放 /models 时 supported=false
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelSyncResult" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502":
+          description: 鉴权或网络失败
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /providers/{providerId}/models/enable:
+    post:
+      tags: [Models]
+      operationId: enableProviderModels
+      summary: 批量启用/停用模型
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [modelIds, enabled]
+              properties:
+                modelIds:
+                  type: array
+                  items: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Model" }
+
+  /providers/{providerId}/models/{modelId}:
+    patch:
+      tags: [Models]
+      operationId: updateProviderModel
+      summary: 编辑模型（label/kind/modes/enabled）
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - name: modelId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Model" }
+    delete:
+      tags: [Models]
+      operationId: deleteProviderModel
+      summary: 删除模型（被路由引用时 409）
+      parameters:
+        - $ref: "#/components/parameters/ProviderId"
+        - name: modelId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: 已删除 }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /works:
+    get:
+      tags: [Works]
+      operationId: listWorks
+      summary: 作品库游标列表（仅成功生成）
+      parameters:
+        - { name: projectId, in: query, schema: { type: string }, description: "none 表示未归档" }
+        - { name: mode, in: query, schema: { $ref: "#/components/schemas/GenerationMode" } }
+        - { name: kind, in: query, schema: { type: string, enum: [image, video] } }
+        - { name: providerId, in: query, schema: { type: string } }
+        - { name: modelId, in: query, schema: { type: string } }
+        - { name: favorite, in: query, schema: { type: string, enum: ["1"] } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest, tokens, duration] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 24, maximum: 100 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Work" }
+                  nextCursor: { type: [string, "null"] }
+                  total: { type: integer }
+
+  /works/facets:
+    get:
+      tags: [Works]
+      operationId: workFacets
+      summary: 作品类型/模式/项目计数
+      responses:
+        "200": { description: OK }
+
+  /works/bulk:
+    post:
+      tags: [Works]
+      operationId: bulkWorks
+      summary: 批量收藏/移动/删除/另存为素材
+      responses:
+        "200": { description: OK }
+
+  /works/{workId}:
+    get:
+      tags: [Works]
+      operationId: getWork
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Work" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Works]
+      operationId: updateWork
+      summary: 重命名/收藏/移动项目
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Works]
+      operationId: deleteWork
+      summary: 软删除作品（任务记录保留）
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "204": { description: 已删除 }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /works/{workId}/save-to-assets:
+    post:
+      tags: [Works]
+      operationId: saveWorkToAssets
+      summary: 将作品文件复制为素材（幂等）
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "201":
+          description: 已创建素材
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssetSaveResult" }
+        "200":
+          description: 素材已存在
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssetSaveResult" }
+        "410":
+          description: 作品文件已清理
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /works/{workId}/download:
+    get:
+      tags: [Works]
+      operationId: downloadWork
+      summary: 以原始文件名下载作品
+      parameters:
+        - $ref: "#/components/parameters/WorkId"
+      responses:
+        "200": { description: 文件流 }
+        "410": { description: 文件缺失 }
+
+  /assets/facets:
+    get:
+      tags: [Assets]
+      operationId: assetFacets
+      summary: 素材类型/来源/项目/标签计数
+      responses:
+        "200": { description: OK }
+
+  /assets/{assetId}/usage:
+    get:
+      tags: [Assets]
+      operationId: assetUsage
+      summary: 引用该素材的任务/作品列表
+      parameters:
+        - $ref: "#/components/parameters/AssetId"
+      responses:
+        "200": { description: OK }
+
+  /assets/{assetId}/download:
+    get:
+      tags: [Assets]
+      operationId: downloadAsset
+      summary: 以原始文件名下载素材
+      parameters:
+        - $ref: "#/components/parameters/AssetId"
+      responses:
+        "200": { description: 文件流 }
+
+  /assets/bulk:
+    post:
+      tags: [Assets]
+      operationId: bulkAssets
+      summary: 批量移动项目/加标签/移除标签/删除
+      responses:
+        "200": { description: OK }
+
   /models:
     get:
       tags: [Providers]
@@ -492,16 +826,27 @@ paths:
         "415": { $ref: "#/components/responses/UnsupportedMedia" }
 
   /assets/{assetId}:
+    patch:
+      tags: [Assets]
+      operationId: updateAsset
+      summary: 重命名 / 移动项目 / 替换标签
+      parameters:
+        - $ref: "#/components/parameters/AssetId"
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Assets]
       operationId: deleteAsset
-      summary: 删除素材
+      summary: 软删除素材；被运行中任务引用返回 409，历史引用需 ?force=1
       parameters:
         - $ref: "#/components/parameters/AssetId"
+        - { name: force, in: query, schema: { type: string, enum: ["1"] } }
       responses:
         "204":
           description: 已删除
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /assets/{assetId}/content:
     get:
@@ -1216,6 +1561,127 @@ components:
         createdAt: { type: string, format: date-time }
         startedAt: { type: [string, "null"], format: date-time }
         finishedAt: { type: [string, "null"], format: date-time }
+
+    ModelKind:
+      type: string
+      enum: [image, video, unknown]
+
+    Model:
+      type: object
+      required: [providerId, id, label, kind, modes, capabilities, source, enabled, status]
+      properties:
+        providerId: { type: string }
+        id: { type: string, description: Provider 侧模型 ID，与 GenerationRequest.modelId 一致 }
+        label: { type: string }
+        kind: { $ref: "#/components/schemas/ModelKind" }
+        modes:
+          type: array
+          items: { $ref: "#/components/schemas/GenerationMode" }
+        capabilities: { $ref: "#/components/schemas/ProviderCapabilities" }
+        source: { type: string, enum: [discovered, manual, seed] }
+        enabled: { type: boolean }
+        status: { type: string, enum: [ready, unverified, missing] }
+        lastSyncedAt: { type: [string, "null"], format: date-time }
+        lastSeenAt: { type: [string, "null"], format: date-time }
+        lastUsedAt: { type: [string, "null"], format: date-time }
+        lastError: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ModelSyncResult:
+      type: object
+      required: [providerId, supported, fetched, added, updated, missing, message, items]
+      properties:
+        providerId: { type: string }
+        supported: { type: boolean, description: 网关未开放 /models 时为 false }
+        fetched: { type: integer }
+        added: { type: integer }
+        updated: { type: integer }
+        missing: { type: integer }
+        suggestedEnabled:
+          type: array
+          items: { type: string }
+        message: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Model" }
+
+    ModelRoute:
+      type: object
+      required: [mode, providerId, modelId, model, warning]
+      properties:
+        mode: { $ref: "#/components/schemas/GenerationMode" }
+        providerId: { type: string }
+        modelId: { type: string }
+        model:
+          oneOf:
+            - { $ref: "#/components/schemas/Model" }
+            - type: "null"
+        warning: { type: [string, "null"] }
+        updatedAt: { type: [string, "null"], format: date-time }
+
+    Work:
+      type: object
+      required: [id, generationId, attempt, outputIndex, kind, mime, url, title, mode, providerId, modelId, params, inputs, storyboard, usage, favorite, createdAt, updatedAt]
+      properties:
+        id: { type: string, example: wrk_gen01j9_0_0 }
+        generationId: { type: string }
+        attempt: { type: integer }
+        outputIndex: { type: integer }
+        kind: { type: string, enum: [image, video] }
+        mime: { type: string }
+        size: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+        durationSec: { type: number }
+        url: { type: string, format: uri-reference }
+        thumbnailUrl: { type: string, format: uri-reference }
+        title: { type: string }
+        prompt: { type: string }
+        mode: { $ref: "#/components/schemas/GenerationMode" }
+        providerId: { type: string }
+        modelId: { type: string }
+        params: { $ref: "#/components/schemas/GenerationParams" }
+        inputs:
+          type: array
+          items: { $ref: "#/components/schemas/GenerationInput" }
+        storyboard:
+          type: array
+          items: { $ref: "#/components/schemas/StoryboardRow" }
+        usage:
+          type: object
+          properties:
+            totalTokens: { type: integer }
+            estimated: { type: boolean }
+        projectId: { type: string }
+        sessionId: { type: string }
+        source: { type: string, enum: [studio, agent] }
+        favorite: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    LibraryAsset:
+      allOf:
+        - $ref: "#/components/schemas/MediaAsset"
+        - type: object
+          properties:
+            projectId: { type: string }
+            sha256: { type: string }
+            source: { type: string, enum: [upload, work, agent] }
+            sourceRef: { type: string }
+            tags:
+              type: array
+              items: { type: string }
+            usageCount: { type: integer }
+            updatedAt: { type: string, format: date-time }
+            duplicateOf: { type: string, description: 内容重复的既有素材 ID（仅提示，不合并） }
+
+    AssetSaveResult:
+      type: object
+      required: [asset, created]
+      properties:
+        asset: { $ref: "#/components/schemas/LibraryAsset" }
+        created: { type: boolean }
 
     ErrorEnvelope:
       type: object

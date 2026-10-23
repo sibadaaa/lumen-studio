@@ -63,9 +63,17 @@ export interface ProviderTestResult {
   models?: string[];
 }
 
+export interface RemoteModel {
+  id: string;
+  label?: string;
+  ownedBy?: string;
+}
+
 export interface ProviderAdapter {
   readonly id: string;
   readonly capabilities: ProviderCapabilities;
+  /** Optional remote model discovery; gateways without /models may omit it. */
+  listModels?(): Promise<RemoteModel[]>;
   testConnection(): Promise<ProviderTestResult>;
   submit(request: ProviderRequest): Promise<ProviderTask>;
   poll(providerTaskId: string): Promise<ProviderTask>;
