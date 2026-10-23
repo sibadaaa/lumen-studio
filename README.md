@@ -250,6 +250,8 @@ server/                      Hono BFF
 | 施工图（技术方案） | [docs/02-construction-blueprint.md](./docs/02-construction-blueprint.md) |
 | 模型获取 / 作品库 / 素材库设计稿 | [docs/04-model-works-assets-design.md](./docs/04-model-works-assets-design.md) |
 | 模型获取 / 作品库 / 素材库施工图 | [docs/05-model-works-assets-blueprint.md](./docs/05-model-works-assets-blueprint.md) |
+| i18n 与全局主题设计稿 | [docs/06-i18n-theme-design.md](./docs/06-i18n-theme-design.md) |
+| i18n 与全局主题施工图 | [docs/07-i18n-theme-blueprint.md](./docs/07-i18n-theme-blueprint.md) |
 | API 契约（OpenAPI 3.1） | [docs/03-api-contract.yaml](./docs/03-api-contract.yaml) |
 | 设计稿截图 | [design/screenshots/](./design/screenshots/) |
 
@@ -262,7 +264,8 @@ server/                      Hono BFF
 - 前端默认 HTTP 轮询任务；SSE 端点已实现，可在作品库/长任务场景切换。
 - 视频统一输出 H.264 MP4（无音轨）；生成音频的 Provider 结果当前在合成时丢弃音轨，后续可补 AAC 混流。
 - Agent 是**本地确定性编排器**，不调用 LLM；接入真实模型（DSH 会话协议或 Provider LLM）是下一步。
-- 模型获取、作品库、素材库已按 [04](./docs/04-model-works-assets-design.md) / [05](./docs/05-model-works-assets-blueprint.md) 落地：模型目录与路由、作品快照与历史回填、素材标签/引用/作品转素材均可用；项目重命名、会话删除 UI 仍待接入（API 已具备）。
+- 模型获取、作品库、素材库已按 [04](./docs/04-model-works-assets-design.md) / [05](./docs/05-model-works-assets-blueprint.md) 落地：模型目录与路由、作品快照与历史回填、素材标签/引用/作品转素材均可用。
+- i18n（zh-CN/en）与浅色/深色全局主题的**设计与施工图已给出**（[06](./docs/06-i18n-theme-design.md) / [07](./docs/07-i18n-theme-blueprint.md)），待实施；项目重命名、会话删除 UI 也仍待接入（API 已具备）。
 - 作品/素材删除为软删除；文件按 `MEDIA_RETENTION_DAYS` 保留策略清理（清理任务 P1）。
 - 未实现账号/多用户/配额；本地单用户，访问控制依赖本机与反向代理。
 - 生产化需要：Postgres/SQLite、对象存储、短时签名 URL、审计日志、Docker 镜像与 CI。
