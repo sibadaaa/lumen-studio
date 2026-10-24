@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Plus, SlidersHorizontal, Wand2 } from "lucide-react";
 import { MODES } from "../data/mock";
+import { SHORTCUTS_ENABLED } from "../lib/features";
 import { formatTokens } from "../lib/tokens";
 import { AssetPickerDialog } from "../assets/AssetPickerDialog";
 import type { AssetRole } from "../../shared/contracts";
@@ -82,7 +83,7 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
               </div>
             ))}
           </div>
-          <span className="kbd-hint">{t("composer.kbd")}</span>
+          {SHORTCUTS_ENABLED && <span className="kbd-hint">{t("composer.kbd")}</span>}
         </div>
         <div className="estimate-inline">
           <span className="estimate-dot" />

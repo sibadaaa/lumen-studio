@@ -28,6 +28,7 @@ import type {
   SystemInfo,
 } from "../../shared/contracts";
 import { api, subscribeAgentEvents } from "../lib/api";
+import { SHORTCUTS_ENABLED } from "../lib/features";
 import { useStudio } from "../studio/StudioContext";
 
 interface Props {
@@ -450,7 +451,7 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
         <label className="ws-search">
           <Search size={13} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchPlaceholder")} aria-label={t("searchAria")} />
-          <kbd>⌘K</kbd>
+          {SHORTCUTS_ENABLED && <kbd>⌘K</kbd>}
         </label>
 
         <div className="ws-session-scroll">

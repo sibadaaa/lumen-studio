@@ -9,6 +9,7 @@ import {
   SquarePlay,
 } from "lucide-react";
 import { MODES } from "../data/mock";
+import { SHORTCUTS_ENABLED } from "../lib/features";
 import type { Mode } from "../types";
 import { HistoryStrip } from "./HistoryStrip";
 import { Inspector } from "./Inspector";
@@ -41,7 +42,7 @@ export function StudioPage({ hidden, onOpenAgent, toast }: Props) {
   }, [hidden, studio.mode]);
 
   useEffect(() => {
-    if (hidden) return;
+    if (hidden || !SHORTCUTS_ENABLED) return;
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const typing = target && ["INPUT", "TEXTAREA"].includes(target.tagName);
@@ -87,14 +88,16 @@ export function StudioPage({ hidden, onOpenAgent, toast }: Props) {
             <button className="agent-entry" onClick={onOpenAgent}>
               <Bot size={13} strokeWidth={1.4} />
               {t("agentEntry")}
-              <kbd>⌘J</kbd>
+              {SHORTCUTS_ENABLED && <kbd>⌘J</kbd>}
             </button>
           </div>
           <div className="modebar-end">
             <span className="draft-state"><i />{t("draftSaved")}</span>
-            <button className="shortcut-hint" onClick={() => toast(t("shortcutHint"))}>
-              <kbd>1</kbd><span>–</span><kbd>5</kbd><span>{t("switch")}</span>
-            </button>
+            {SHORTCUTS_ENABLED && (
+              <button className="shortcut-hint" onClick={() => toast(t("shortcutHint"))}>
+                <kbd>1</kbd><span>–</span><kbd>5</kbd><span>{t("switch")}</span>
+              </button>
+            )}
           </div>
         </div>
 

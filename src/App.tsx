@@ -21,6 +21,7 @@ import { StudioPage } from "./studio/StudioPage";
 import { StudioProvider } from "./studio/StudioContext";
 import { WorkspaceHome } from "./pages/WorkspaceHome";
 import { api } from "./lib/api";
+import { SHORTCUTS_ENABLED } from "./lib/features";
 import { compactTokens, formatTokens } from "./lib/tokens";
 import type { Page, StudioIntent, StudioRuntime } from "./types";
 
@@ -108,7 +109,7 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j" && page === "studio") {
+      if (SHORTCUTS_ENABLED && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j" && page === "studio") {
         event.preventDefault();
         setPage("agent");
       }
@@ -187,9 +188,11 @@ export default function App() {
           </nav>
 
           <div className="rail-bottom">
-            <button className="rail-item" data-tip={t("shortcuts")} aria-label={t("shortcuts")} onClick={() => toast(t("shortcutsToast"))}>
-              <Keyboard size={21} strokeWidth={1.4} />
-            </button>
+            {SHORTCUTS_ENABLED && (
+              <button className="rail-item" data-tip={t("shortcuts")} aria-label={t("shortcuts")} onClick={() => toast(t("shortcutsToast"))}>
+                <Keyboard size={21} strokeWidth={1.4} />
+              </button>
+            )}
           </div>
         </aside>
 
