@@ -1,5 +1,6 @@
 {
   "save": "Save",
+  "saving": "Saving…",
   "cancel": "Cancel",
   "delete": "Delete",
   "retry": "Retry",
@@ -13,6 +14,8 @@
   "copy": "Copy",
   "copied": "Copied",
   "rename": "Rename",
+  "renameHint": "Up to {{max}} characters. Empty names are not saved.",
+  "renameRequired": "Name cannot be empty",
   "move": "Move",
   "favorite": "Favorite",
   "unfavorite": "Unfavorite",

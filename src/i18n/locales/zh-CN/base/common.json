@@ -1,5 +1,6 @@
 {
   "save": "保存",
+  "saving": "保存中…",
   "cancel": "取消",
   "delete": "删除",
   "retry": "重试",
@@ -13,6 +14,8 @@
   "copy": "复制",
   "copied": "已复制",
   "rename": "重命名",
+  "renameHint": "最多 {{max}} 个字符，留空不会保存。",
+  "renameRequired": "名称不能为空",
   "move": "移动",
   "favorite": "收藏",
   "unfavorite": "取消收藏",

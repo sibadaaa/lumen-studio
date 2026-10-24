@@ -231,6 +231,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  deleteProject: (projectId: string) =>
+    request<void>(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
 
   agentSessions: (projectId?: string, q?: string) => {
     const params = new URLSearchParams();
@@ -246,6 +248,11 @@ export const api = {
     }),
   agentSession: (sessionId: string) =>
     request<AgentSessionDetail>(`/agent/sessions/${encodeURIComponent(sessionId)}`),
+  updateAgentSession: (sessionId: string, patch: { title?: string; projectId?: string | null }) =>
+    request<AgentSession>(`/agent/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
   sendAgentMessage: (sessionId: string, text: string) =>
     request<AgentSendResponse>(`/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: "POST",

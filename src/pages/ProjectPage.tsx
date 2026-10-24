@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, Bot, ImagePlus, RefreshCw, Settings2 } from "lucide-react";
+import { ArrowRight, Bot, ImagePlus, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import type { AgentSession, MediaAsset, ProjectWithStats } from "../../shared/contracts";
 import { api } from "../lib/api";
+import { ActionMenu } from "../components/ActionMenu";
+import { RenameDialog } from "../components/RenameDialog";
 import { relativeTime, formatDate } from "../i18n/format";
 import { IMG } from "../data/mock";
 
@@ -11,6 +13,8 @@ interface Props {
   onEnterStudio: () => void;
   onOpenAgent: (sessionId?: string) => void;
   onOpenAssets?: (projectId: string) => void;
+  onProjectRenamed?: (project: ProjectWithStats) => void;
+  onProjectDeleted?: () => void;
   toast: (message: string, type?: "default" | "success") => void;
 }
 
@@ -25,7 +29,7 @@ const relative = (iso: string) => {
   return new Date(iso).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 };
 
-export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAssets, toast }: Props) {
+export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAssets, onProjectRenamed, onProjectDeleted, toast }: Props) {
   const { t } = useTranslation("project");
   const { t: tBase } = useTranslation("base");
   const [project, setProject] = useState<ProjectWithStats | null>(null);
@@ -34,6 +38,10 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [renamingProject, setRenamingProject] = useState(false);
+  const [projectNameBusy, setProjectNameBusy] = useState(false);
+  const [renameSession, setRenameSession] = useState<AgentSession | null>(null);
+  const [sessionNameBusy, setSessionNameBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -74,6 +82,65 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
     }
   };
 
+  const saveProjectName = async (value: string) => {
+    if (!project || projectNameBusy) return;
+    setProjectNameBusy(true);
+    try {
+      const updated = await api.updateProject(project.id, { name: value });
+      setProject(updated);
+      setRenamingProject(false);
+      onProjectRenamed?.(updated);
+      toast(t("renamed"), "success");
+    } catch (error) {
+      toast((error as Error).message);
+    } finally {
+      setProjectNameBusy(false);
+    }
+  };
+
+  const removeProject = async () => {
+    if (!project) return;
+    if (!window.confirm(t("deleteConfirm", { name: project.name }))) return;
+    try {
+      await api.deleteProject(project.id);
+      toast(t("deleted"), "success");
+      onProjectDeleted?.();
+    } catch (error) {
+      toast((error as Error).message);
+    }
+  };
+
+  const saveSessionName = async (value: string) => {
+    if (!renameSession || sessionNameBusy) return;
+    setSessionNameBusy(true);
+    try {
+      const updated = await api.updateAgentSession(renameSession.id, { title: value });
+      setSessions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setRenameSession(null);
+      toast(t("sessionRenamed"), "success");
+    } catch (error) {
+      toast((error as Error).message);
+    } finally {
+      setSessionNameBusy(false);
+    }
+  };
+
+  const removeSession = async (session: AgentSession) => {
+    if (session.status === "running") {
+      toast(t("sessionRunningBlock"));
+      return;
+    }
+    if (!window.confirm(t("sessionDeleteConfirm", { title: session.title }))) return;
+    try {
+      await api.deleteAgentSession(session.id);
+      setSessions((prev) => prev.filter((item) => item.id !== session.id));
+      toast(t("sessionDeleted"), "success");
+      void load();
+    } catch (error) {
+      toast((error as Error).message);
+    }
+  };
+
   const latest = sessions[0];
   const stats = project?.stats;
 
@@ -108,8 +175,11 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
               <button className="ghost-icon" title={t("refreshAria")} aria-label={t("refreshAria")} onClick={() => void load()}>
                 <RefreshCw size={14} />
               </button>
-              <button className="ghost-icon" title={t("settingsToast")} aria-label={t("settingsToast")} onClick={() => toast(t("settingsToast"))}>
-                <Settings2 size={14} />
+              <button className="ghost-icon" title={t("renameAria")} aria-label={t("renameAria")} onClick={() => setRenamingProject(true)}>
+                <Pencil size={14} />
+              </button>
+              <button className="ghost-icon is-danger" title={t("deleteAria")} aria-label={t("deleteAria")} onClick={() => void removeProject()}>
+                <Trash2 size={14} />
               </button>
             </div>
           </div>
@@ -129,7 +199,20 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
               </button>
             )}
             {sessions.map((session) => (
-              <button key={session.id} className="pp-session" onClick={() => onOpenAgent(session.id)}>
+              <div
+                key={session.id}
+                className="pp-session"
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenAgent(session.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpenAgent(session.id);
+                  }
+                }}
+                aria-label={t("openSession", { title: session.title })}
+              >
                 <span className={`ws-session-dot ${session.status === "running" ? "is-running" : ""}`} />
                 <div>
                   <strong>{session.title}</strong>
@@ -138,7 +221,21 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
                   </small>
                 </div>
                 <em>{compact(session.tokens)}</em><time>{relative(session.updatedAt)}</time>
-              </button>
+                <ActionMenu
+                  label={t("sessionActions", { title: session.title })}
+                  iconSize={13}
+                  items={[
+                    { key: "rename", label: tBase("rename"), icon: <Pencil size={12} />, onSelect: () => setRenameSession(session) },
+                    {
+                      key: "delete",
+                      label: tBase("delete"),
+                      icon: <Trash2 size={12} />,
+                      danger: true,
+                      onSelect: () => void removeSession(session),
+                    },
+                  ]}
+                />
+              </div>
             ))}
           </section>
 
@@ -214,6 +311,30 @@ export function ProjectPage({ projectId, onEnterStudio, onOpenAgent, onOpenAsset
           </div>
         </div>
       </aside>
+
+      <RenameDialog
+        open={renamingProject}
+        title={t("renameProject")}
+        description={t("renameProjectDesc")}
+        initialValue={project?.name || ""}
+        label={t("projectNameLabel")}
+        maxLength={80}
+        busy={projectNameBusy}
+        onClose={() => { if (!projectNameBusy) setRenamingProject(false); }}
+        onSubmit={(value) => void saveProjectName(value)}
+      />
+
+      <RenameDialog
+        open={Boolean(renameSession)}
+        title={t("renameSession")}
+        description={t("renameSessionDesc")}
+        initialValue={renameSession?.title || ""}
+        label={t("sessionNameLabel")}
+        maxLength={120}
+        busy={sessionNameBusy}
+        onClose={() => { if (!sessionNameBusy) setRenameSession(null); }}
+        onSubmit={(value) => void saveSessionName(value)}
+      />
     </main>
   );
 }

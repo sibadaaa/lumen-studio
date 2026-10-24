@@ -34,5 +34,12 @@
   "defaultProjectName": "未命名项目 {{count}}",
   "defaultProjectDesc": "从空白画布开始",
   "coverAlt": "{{name}} 项目封面",
-  "localProject": "本地项目"
+  "localProject": "本地项目",
+  "projectActions": "{{name}} 项目操作",
+  "renameProject": "重命名项目",
+  "renameProjectDesc": "名称会同步到工作区卡片与面包屑导航。",
+  "projectNameLabel": "项目名称",
+  "renamed": "项目已重命名",
+  "deleted": "项目已删除",
+  "deleteConfirm": "删除项目「{{name}}」？项目内的会话和素材会保留，但不再归属该项目。"
 }

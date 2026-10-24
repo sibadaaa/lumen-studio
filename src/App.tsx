@@ -276,6 +276,15 @@ export default function App() {
                 setLibraryProjectId(id);
                 setPage("assets");
               }}
+              onProjectRenamed={(project) => {
+                if (project.id === projectId) setProjectName(project.name);
+              }}
+              onProjectDeleted={() => {
+                setAgentSessionId(null);
+                setLibraryProjectId(null);
+                setStudioIntent(null);
+                setPage("workspace");
+              }}
               toast={toast}
             />
           )}

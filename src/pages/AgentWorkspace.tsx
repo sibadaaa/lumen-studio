@@ -7,13 +7,14 @@ import {
   Check,
   ChevronDown,
   Film,
-  MoreHorizontal,
   Paperclip,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
   Settings2,
   Sparkles,
+  Trash2,
   Wrench,
   X,
 } from "lucide-react";
@@ -29,6 +30,8 @@ import type {
 } from "../../shared/contracts";
 import { api, subscribeAgentEvents } from "../lib/api";
 import { SHORTCUTS_ENABLED } from "../lib/features";
+import { ActionMenu } from "../components/ActionMenu";
+import { RenameDialog } from "../components/RenameDialog";
 import { useStudio } from "../studio/StudioContext";
 
 interface Props {
@@ -202,6 +205,8 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [online, setOnline] = useState(true);
+  const [renameTarget, setRenameTarget] = useState<AgentSession | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<(() => void) | null>(null);
 
@@ -423,6 +428,56 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
     await loadSession(id);
   };
 
+  const renameSession = async (value: string) => {
+    if (!renameTarget || renaming) return;
+    setRenaming(true);
+    try {
+      const updated = await api.updateAgentSession(renameTarget.id, { title: value });
+      setSessions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setSession((prev) => (prev && prev.id === updated.id ? { ...prev, title: updated.title, updatedAt: updated.updatedAt } : prev));
+      setRenameTarget(null);
+      toast(t("sessionRenamed"), "success");
+    } catch (err) {
+      toast((err as Error).message);
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const removeSession = async (item: AgentSession) => {
+    if (item.status === "running" || (running && activeId === item.id)) {
+      toast(t("sessionRunningBlock"));
+      return;
+    }
+    if (!window.confirm(t("sessionDeleteConfirm", { title: item.title }))) return;
+    try {
+      await api.deleteAgentSession(item.id);
+      const remaining = sessions.filter((session) => session.id !== item.id);
+      setSessions(remaining);
+      toast(t("sessionDeleted"), "success");
+      if (activeId !== item.id) return;
+      closeRef.current?.();
+      closeRef.current = null;
+      setPlan([]);
+      setTools([]);
+      setProgress(null);
+      setError(null);
+      setRunning(false);
+      setStage(t("statusReady"));
+      const next = remaining[0];
+      if (next) {
+        setActiveId(next.id);
+        await loadSession(next.id);
+      } else {
+        setActiveId(null);
+        setSession(null);
+        setMessages([]);
+      }
+    } catch (err) {
+      toast((err as Error).message);
+    }
+  };
+
   const filtered = useMemo(
     () => sessions.filter((item) => !query || item.title.toLowerCase().includes(query.toLowerCase())),
     [sessions, query]
@@ -457,10 +512,19 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
         <div className="ws-session-scroll">
           <div className="ws-section-label"><span>{t("sessions")}</span><em>{filtered.length}</em></div>
           {filtered.map((item) => (
-            <button
+            <div
               key={item.id}
               className={`ws-session ${activeId === item.id ? "is-active" : ""}`}
+              role="button"
+              tabIndex={0}
               onClick={() => void openSession(item.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  void openSession(item.id);
+                }
+              }}
+              aria-label={t("openSession", { title: item.title })}
             >
               <span className={`ws-session-dot ${item.status === "running" ? "is-running" : ""}`} />
               <span className="ws-session-body">
@@ -468,7 +532,23 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
                 <small>{item.status === "running" ? t("running") : t("messages", { count: item.messageCount })} · {compact(item.tokens)} tokens</small>
               </span>
               <time>{relative(item.updatedAt)}</time>
-            </button>
+              <ActionMenu
+                className="ws-session-menu"
+                label={t("sessionActions", { title: item.title })}
+                iconSize={13}
+                items={[
+                  { key: "rename", label: tBase("rename"), icon: <Pencil size={12} />, onSelect: () => setRenameTarget(item) },
+                  {
+                    key: "delete",
+                    label: tBase("delete"),
+                    icon: <Trash2 size={12} />,
+                    danger: true,
+                    disabled: item.status === "running" || (running && activeId === item.id),
+                    onSelect: () => void removeSession(item),
+                  },
+                ]}
+              />
+            </div>
           ))}
           {filtered.length === 0 && (
             <div className="ws-session-empty">
@@ -497,7 +577,21 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
             <button className="ws-back" onClick={onBackToStudio}><ArrowLeft size={12} />{t("backToStudio")}</button>
             <span className="ws-model-chip"><span className="ws-model-dot" />local-agent <ChevronDown size={10} /></span>
             <span className="ws-context-chip" title={t("contextChipTitle", { count: session?.tokens || 0 })}><i style={{ ["--p" as string]: usagePercent }} />{usagePercent}%</span>
-            <button className="ghost-icon" aria-label={t("moreAria")} onClick={() => toast(t("moreToast"))}><MoreHorizontal size={14} /></button>
+            <ActionMenu
+              className="ws-head-menu"
+              label={t("moreAria")}
+              items={[
+                { key: "rename", label: tBase("rename"), icon: <Pencil size={12} />, disabled: !session, onSelect: () => session && setRenameTarget(session) },
+                {
+                  key: "delete",
+                  label: tBase("delete"),
+                  icon: <Trash2 size={12} />,
+                  danger: true,
+                  disabled: !session || running,
+                  onSelect: () => session && void removeSession(session),
+                },
+              ]}
+            />
           </div>
         </header>
 
@@ -731,6 +825,18 @@ export function AgentWorkspace({ hidden, projectId, initialSessionId, onBackToSt
         </div>
         <div className="ws-context-foot"><span><i />{t("localFoot")}</span><button onClick={onOpenApi}>{t("apiSettings")}</button></div>
       </aside>
+
+      <RenameDialog
+        open={Boolean(renameTarget)}
+        title={t("renameSession")}
+        description={t("renameSessionDesc")}
+        initialValue={renameTarget?.title || ""}
+        label={t("sessionNameLabel")}
+        maxLength={120}
+        busy={renaming}
+        onClose={() => { if (!renaming) setRenameTarget(null); }}
+        onSubmit={(value) => void renameSession(value)}
+      />
     </main>
   );
 }

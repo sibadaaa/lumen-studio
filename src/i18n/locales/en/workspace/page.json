@@ -34,5 +34,12 @@
   "defaultProjectName": "Untitled project {{count}}",
   "defaultProjectDesc": "Start from a blank canvas",
   "coverAlt": "Cover of {{name}}",
-  "localProject": "Local project"
+  "localProject": "Local project",
+  "projectActions": "Actions for {{name}}",
+  "renameProject": "Rename project",
+  "renameProjectDesc": "The new name is used on the workspace card and in breadcrumbs.",
+  "projectNameLabel": "Project name",
+  "renamed": "Project renamed",
+  "deleted": "Project deleted",
+  "deleteConfirm": "Delete project “{{name}}”? Its sessions and assets are kept but no longer belong to the project."
 }

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, Download, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, Download, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { ProjectWithStats, UsageSummary } from "../../shared/contracts";
 import { api } from "../lib/api";
+import { ActionMenu } from "../components/ActionMenu";
+import { RenameDialog } from "../components/RenameDialog";
 import { relativeTime } from "../i18n/format";
 import { IMG } from "../data/mock";
 
@@ -53,6 +55,8 @@ export function WorkspaceHome({ onOpenProject, toast }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [creatingBusy, setCreatingBusy] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<ProjectWithStats | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -92,6 +96,32 @@ export function WorkspaceHome({ onOpenProject, toast }: Props) {
       toast((error as Error).message);
     } finally {
       setCreatingBusy(false);
+    }
+  };
+
+  const renameProject = async (value: string) => {
+    if (!renameTarget || renaming) return;
+    setRenaming(true);
+    try {
+      const updated = await api.updateProject(renameTarget.id, { name: value });
+      setProjects((prev) => prev.map((project) => (project.id === updated.id ? updated : project)));
+      setRenameTarget(null);
+      toast(t("renamed"), "success");
+    } catch (error) {
+      toast((error as Error).message);
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const deleteProject = async (project: ProjectWithStats) => {
+    if (!window.confirm(t("deleteConfirm", { name: project.name }))) return;
+    try {
+      await api.deleteProject(project.id);
+      setProjects((prev) => prev.filter((item) => item.id !== project.id));
+      toast(t("deleted"), "success");
+    } catch (error) {
+      toast((error as Error).message);
     }
   };
 
@@ -146,17 +176,33 @@ export function WorkspaceHome({ onOpenProject, toast }: Props) {
 
         <div className="project-grid">
           {projects.map((project) => (
-            <button
+            <div
               key={project.id}
               className={`project-card ${project.status === "active" ? "is-active" : ""}`}
+              role="button"
+              tabIndex={0}
               onClick={() => onOpenProject({ id: project.id, name: project.name })}
-              aria-label={`${project.name}`}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenProject({ id: project.id, name: project.name });
+                }
+              }}
+              aria-label={t("openProject", { name: project.name })}
             >
               <div className="project-card-cover">
                 <img src={project.coverUrl || IMG.dunes} alt={t("coverAlt", { name: project.name })} />
                 <span className="project-card-badge">
                   {project.status === "archived" ? t("badgeArchived") : project.stats.sessions ? t("badgeActive") : t("badgeRecent")}
                 </span>
+                <ActionMenu
+                  className="project-card-actions"
+                  label={t("projectActions", { name: project.name })}
+                  items={[
+                    { key: "rename", label: tBase("rename"), icon: <Pencil size={12} />, onSelect: () => setRenameTarget(project) },
+                    { key: "delete", label: tBase("delete"), icon: <Trash2 size={12} />, danger: true, onSelect: () => void deleteProject(project) },
+                  ]}
+                />
                 <span className="project-card-tokens">{compact(project.stats.tokens)} tokens</span>
               </div>
               <div className="project-card-body">
@@ -171,7 +217,7 @@ export function WorkspaceHome({ onOpenProject, toast }: Props) {
                 <span>{project.stats.assets} {t("assets")}</span>
                 <time>{relative(project.stats.lastActivityAt || project.updatedAt)}</time>
               </div>
-            </button>
+            </div>
           ))}
 
           {!loading && projects.length === 0 && (
@@ -246,6 +292,19 @@ export function WorkspaceHome({ onOpenProject, toast }: Props) {
           </button>
         </div>
       </aside>
+
+      <RenameDialog
+        open={Boolean(renameTarget)}
+        title={t("renameProject")}
+        description={t("renameProjectDesc")}
+        initialValue={renameTarget?.name || ""}
+        label={t("projectNameLabel")}
+        placeholder={t("createPlaceholder")}
+        maxLength={80}
+        busy={renaming}
+        onClose={() => { if (!renaming) setRenameTarget(null); }}
+        onSubmit={(value) => void renameProject(value)}
+      />
     </main>
   );
 }
