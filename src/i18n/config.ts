@@ -1,5 +1,4 @@
 import i18next, { type i18n as I18nInstance } from "i18next";
-import { initReactI18next } from "react-i18next";
 import { zhCN } from "./locales/zh-CN";
 import { en } from "./locales/en";
 
@@ -39,14 +38,13 @@ function detectLocale(): Locale {
 
 export const i18n: I18nInstance = i18next.createInstance();
 
-void i18n.use(initReactI18next).init({
+void i18n.init({
   resources: { "zh-CN": zhCN, en },
   lng: detectLocale(),
   fallbackLng: "zh-CN",
   ns: NAMESPACES,
   defaultNS: "base",
   interpolation: { escapeValue: false },
-  react: { useSuspense: false },
   returnEmptyString: false,
   saveMissing: import.meta.env.DEV,
   missingKeyHandler: import.meta.env.DEV

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-LUMEN 流明 — React frontend + local Hono BFF for AI image/video generation. Single user, no auth. `README.md` (Chinese) is detailed and current; `docs/03-api-contract.yaml` is the API contract.
+LUMEN 流明 — Vue 3 frontend + local Hono BFF for AI image/video generation. Single user, no auth. `README.md` (Chinese) is detailed and current; `docs/03-api-contract.yaml` is the API contract.
 
 ## Commands
 
@@ -8,9 +8,9 @@ LUMEN 流明 — React frontend + local Hono BFF for AI image/video generation. 
 npm run dev:all        # Vite (127.0.0.1:5173) + BFF (127.0.0.1:8787) via concurrently
 npm run dev            # web only
 npm run dev:server     # BFF only (tsx watch)
-npm run typecheck      # two passes: tsc -b (app+node) AND tsc -p tsconfig.server.json
+npm run typecheck      # vue-tsc -b (src) AND tsc -p tsconfig.server.json
 npm run test:server    # node --import tsx --test server/tests/*.test.ts (vault, estimate, ffmpeg, db, agent)
-npm run build          # tsc -b && vite build
+npm run build          # vue-tsc -b && vite build
 ```
 
 - Single test file: `node --import tsx --test server/tests/vault.test.ts` (same pattern for others).
@@ -20,9 +20,17 @@ npm run build          # tsc -b && vite build
 
 ## Two TypeScript worlds
 
-- `tsconfig.json` (project references) covers `src/` + `vite.config.ts` — bundler resolution, no `.js` import extensions.
+- `tsconfig.json` (project references) covers `src/` + `vite.config.ts` via `tsconfig.app.json` — bundler resolution, no `.js` import extensions, `.vue` files included.
 - `tsconfig.server.json` covers `server/` + `shared/` — **NodeNext**: relative imports must end in `.js` (e.g. `import ... from "../shared/contracts.js"`). Match the existing style or typecheck fails.
 - `npm run typecheck` runs both; a change in one world can break the other.
+
+## Frontend
+
+- Vue 3 + TypeScript + Vue Router + Pinia. Entry: `src/main.ts`; shell: `src/App.vue`; routes: `src/router.ts`.
+- `StudioPage` and `AgentPage` are kept alive via `<KeepAlive :include="['StudioPage','AgentPage']">`; their `defineOptions({ name })` must match those strings.
+- `src/stores/studio.ts` owns generation/queue state; `src/stores/app.ts` owns project/runtime/theme/toast/API modal state.
+- `src/agent/useAgent.ts` wraps session CRUD + SSE; `src/agent/AgentPage.vue` renders the workbench. `src/chat.css` layers chat layout over `.workspace-page` / `.ws-*`.
+- i18n uses the existing JSON locales through `src/i18n/index.ts` (`useT(ns)`), not vue-i18n.
 
 ## Architecture invariants
 

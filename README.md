@@ -1,8 +1,8 @@
 # LUMEN 流明 · AI 影像工作台
 
-一个支持 API 的 React 文生图 / 文生视频 / 图生图 / 图生视频 / 图组视频工作台。
+一个支持 API 的 Vue 3 文生图 / 文生视频 / 图生图 / 图生视频 / 图组视频工作台。
 
-> **当前阶段：M5 · i18n（zh-CN/en）与全局主题（浅色/深色/跟随系统）已落地。**  
+> **当前阶段：前端已迁移到 Vue 3（Vue Router + Pinia + TypeScript）。**  
 > 工作区 → 项目 → 创作台 → Agent 工作区、五种生成模式、自定义规格、动画模式、分镜表、token 计量均已实现；BFF 已接入 **Provider Adapter、加密密钥、素材上传、SQLite 持久化队列与轮询、FFmpeg 合成**，并提供 **项目 / 会话持久化与可执行的本地 Agent**（解析意图 → 计划 → 调用工具 → 真实生成 → 回写结果）。本地演示 Provider 可在无 Key 的情况下跑通完整链路。左侧导航的**作品库、素材库、API 与模型（模型目录 + 路由）**均为可用页面。
 
 ## 运行
@@ -138,7 +138,7 @@ data/
 ## 生成链路
 
 ```text
-React 创作台
+Vue 创作台
   → 上传素材 POST /uploads
   → POST /generations（参数、分镜、素材、token 预估）
   → BFF 入队（持久化）
@@ -177,15 +177,15 @@ Agent 工作区不是静态演示，而是一个**可执行的本地编排器**�
 ## 产品结构
 
 ```text
-工作区 /workspace                 顶层入口：项目列表
-└── 项目 /workspace/:projectId    项目概览、会话、素材
-    └── 创作台 /workspace/:projectId/studio
+工作区 /                                顶层入口：项目列表
+└── 项目 /projects/:projectId           项目概览、会话、素材
+    └── 创作台 /projects/:projectId/studio
         ├── 文生图        prompt → 图片
         ├── 文生视频      prompt + 时长/运镜 + 清晰度/码率 → mp4
         ├── 图生图        参考图 + 强度 + 清晰度 → 图片
         ├── 图生视频      首帧（+尾帧）+ 运镜 + 动画模式 → mp4
         ├── 图组视频      2–9 张图 + 分镜 + 清晰度/码率 → 合成视频
-        └── Agent 工作区  创作台内的类 DSH 会话视图
+        └── Agent 工作区  /projects/:projectId/agent（独立路由，保留创作台状态）
 ```
 
 文生视频与图组视频提供 `成片 | 分镜表` 双视图：分镜表参考电影分镜表（镜号 / 画面 / 景别 / 运镜 / 画面描述 / 台词·音效 / 时长），支持增删改、复制、AI 拆镜、CSV 导出和逐镜上传。
@@ -197,13 +197,18 @@ Agent 工作区不是静态演示，而是一个**可执行的本地编排器**�
 ## 代码结构
 
 ```text
-src/                         React 前端
+src/                         Vue 3 前端
+├── main.ts                  Vue / Pinia / Router 入口
+├── App.vue                  应用外壳、顶栏、面包屑、KeepAlive 路由
+├── router.ts                `/` / `/projects/:id` / studio / agent / 作品 / 素材 / 模型
 ├── lib/api.ts               BFF 客户端（providers / upload / jobs / projects / agent）
-├── studio/StudioContext.tsx 上传、提交任务、轮询、历史、token
-├── studio/Stage.tsx         图片 / 视频输出、分镜表
-├── studio/Inspector.tsx     参数与 CTA
-├── components/ApiModal.tsx  加密配置与连接测试
-└── pages/                   工作区 / 项目 / Agent（均读取真实接口）
+├── stores/studio.ts         上传、提交任务、轮询、历史、token
+├── stores/app.ts            项目、运行时、主题、语言、Toast、API 弹层
+├── studio/                  创作台：Stage / Inspector / PromptComposer / 分镜表
+├── agent/                   Agent 工作区：会话、SSE、工具卡、计划、输出
+├── library/                 作品库 / 素材库共享卡片、抽屉、选择器
+├── pages/                   工作区 / 项目 / 作品库 / 素材库 / 模型
+└── chat.css                 Agent 工作区布局与消息样式
 
 shared/contracts.ts          前后端共享 API 类型
 server/                      Hono BFF
@@ -217,7 +222,9 @@ server/                      Hono BFF
 └── storage/                 providers / projects / sessions / assets / jobs
 ```
 
-## 实现截图
+## 历史实现截图（React 版本，仅作参考）
+
+> 当前生产前端已迁移到 Vue 3，界面已按 `src/` 中的 Vue 组件重建；以下截图仅记录迁移前的 React 版本。
 
 | 工作区（SQLite） | 项目页（真实会话/素材） |
 | --- | --- |
@@ -266,7 +273,8 @@ server/                      Hono BFF
 - 视频统一输出 H.264 MP4（无音轨）；生成音频的 Provider 结果当前在合成时丢弃音轨，后续可补 AAC 混流。
 - Agent 是**本地确定性编排器**，不调用 LLM；接入真实模型（DSH 会话协议或 Provider LLM）是下一步。
 - 模型获取、作品库、素材库已按 [04](./docs/04-model-works-assets-design.md) / [05](./docs/05-model-works-assets-blueprint.md) 落地：模型目录与路由、作品快照与历史回填、素材标签/引用/作品转素材均可用。
-- i18n 与全局主题已按 [06](./docs/06-i18n-theme-design.md) / [07](./docs/07-i18n-theme-blueprint.md) 落地：`react-i18next` + `locales/<lang>/{base,页面}` 结构、偏好弹层（顶栏）、防闪烁内联脚本、浅色主题令牌重映射、媒体区保持深色；项目重命名、会话删除 UI 仍待接入（API 已具备）。
+- i18n 与全局主题已按 [06](./docs/06-i18n-theme-design.md) / [07](./docs/07-i18n-theme-blueprint.md) 在 Vue 层落地：`i18next` + 自建 `useT()` 响应式封装、`locales/<lang>/{base,页面}` 结构、偏好弹层（顶栏）、防闪烁内联脚本、浅色主题令牌重映射、媒体区保持深色；项目重命名、会话重命名/删除均可在 UI 中完成。
+- 前端已迁移到 Vue 3 + TypeScript + Vue Router + Pinia；旧 React 组件与依赖已移除，BFF 与 `shared/contracts.ts` 协议未变。
 - 作品/素材删除为软删除；文件按 `MEDIA_RETENTION_DAYS` 保留策略清理（清理任务 P1）。
 - 未实现账号/多用户/配额；本地单用户，访问控制依赖本机与反向代理。
 - 生产化需要：Postgres/SQLite、对象存储、短时签名 URL、审计日志、Docker 镜像与 CI。
@@ -275,6 +283,6 @@ server/                      Hono BFF
 
 - `npm run typecheck`：前端 + 服务端通过。
 - `npm run test:server`：AES-GCM 往返/防篡改、token 估算、FFmpeg 两图合成与探测通过。
-- `npm run test:server`（18 项）还覆盖：SQLite 项目/会话/消息持久化、Agent 意图解析（模式/竖屏/码率/每镜时长/动画）、Agent 取消（幂等、不递归、任务变为 canceled）、模型分类/目录/路由（含用户编辑保护与删除守卫）、作品物化（多输出/幂等/attempt/游标/收藏/软删）、素材（哈希/标签上限/引用/软删）。
-- Playwright 冒烟：工作区 → 新建项目 → 项目页 → Agent 工作区 → 新建会话 → 一句话触发图组视频（工具卡 / 计划 / SSE / 720×1280 成片）→ 刷新后会话仍在 → 创作台生成写入当前项目，无控制台错误。
+- `npm run test:server`（21 项）还覆盖：SQLite 项目/会话/消息持久化、Agent 意图解析（模式/竖屏/码率/每镜时长/动画）、Agent 取消（幂等、不递归、任务变为 canceled）、模型分类/目录/路由（含用户编辑保护与删除守卫）、作品物化（多输出/幂等/attempt/游标/收藏/软删）、素材（哈希/标签上限/引用/软删）。
+- Playwright 冒烟（Vue）：工作区 → 项目页 → 创作台 → Agent 工作区（三栏布局 / 工具卡 / 计划 / 输出）→ 新建会话 → 重命名 → Enter 发送触发真实生成 → SSE 回写 → 删除会话 → 作品库 / 素材库 / 模型页 → API 弹层，全程无控制台错误。
 - 媒体接口验证：Range 请求返回 `206 Partial Content`。
