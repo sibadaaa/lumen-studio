@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   PROVIDER_CAPABILITIES,
   type ProviderConfigInput,
@@ -118,6 +119,38 @@ export class ProviderStore {
     );
   }
 
+  /** Env bootstrap is for the workspace database only, so test databases stay on mock. */
+  private usesWorkspaceData() {
+    return path.resolve(config.dataDir) === path.resolve(config.rootDir, "data");
+  }
+
+  /**
+   * Import the custom OpenAI-compatible gateway from CUSTOM_* env vars.
+   * A saved key is left untouched so later edits in the API dialog win.
+   */
+  private importCustomFromEnv() {
+    if (!this.usesWorkspaceData()) return false;
+    const apiKey = (process.env.CUSTOM_API_KEY || "").trim();
+    if (!apiKey) return false;
+    const existing = this.row("custom");
+    if (existing && this.isConfigured(existing)) return false;
+    const def = PROVIDER_DEFAULTS.custom;
+    const imageModel = (process.env.CUSTOM_IMAGE_MODEL || def.imageModel).trim();
+    const videoModel = (process.env.CUSTOM_VIDEO_MODEL || def.videoModel).trim();
+    if (!imageModel || !videoModel) return false;
+    this.upsert({
+      id: "custom",
+      kind: "openai_compatible",
+      baseUrl: (process.env.CUSTOM_BASE_URL || def.baseUrl).trim().replace(/\/$/, ""),
+      imageModel,
+      videoModel,
+      keyEncrypted: getVault().encrypt(apiKey),
+    });
+    const activeId = getSetting("active_provider_id");
+    if (!activeId || activeId === "mock") setSetting("active_provider_id", "custom");
+    return true;
+  }
+
   private bootstrap() {
     const count = this.rows().length;
     const envKey = (process.env.ARK_API_KEY || "").trim();
@@ -147,6 +180,8 @@ export class ProviderStore {
         setSetting("active_provider_id", "mock");
       }
     }
+
+    this.importCustomFromEnv();
 
     const activeId = getSetting("active_provider_id");
     if (activeId && !this.row(activeId)) setSetting("active_provider_id", null);
