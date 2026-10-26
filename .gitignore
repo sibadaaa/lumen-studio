@@ -12,8 +12,8 @@ build/
 .env.*
 !.env.example
 
-# runtime data
-data/
+# runtime data (repo root only; src/data/ is source code)
+/data/
 *.db
 *.db-shm
 *.db-wal
