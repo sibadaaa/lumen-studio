@@ -5,8 +5,14 @@ import { IMG, MODES } from "../data/mock";
 import { formatTokens, ratioValue } from "../lib/tokens";
 import { StoryboardTable } from "./StoryboardTable";
 import { useStudio } from "./StudioContext";
+import type { StageToolsProps } from "./types/components";
 
-function StageTools({ downloadUrl, filename }: { downloadUrl?: string; filename?: string }) {
+/**
+ * 画板上的悬浮工具：全屏、下载和更多。
+ * @param props - 下载链接可选的媒体地址和文件名。
+ * @returns 工具组。没有 `downloadUrl` 时下载控件只是按钮。
+ */
+function StageTools({ downloadUrl, filename }: StageToolsProps) {
   const { t } = useTranslation("studio");
   return (
     <div className="art-tools">
@@ -21,6 +27,10 @@ function StageTools({ downloadUrl, filename }: { downloadUrl?: string; filename?
   );
 }
 
+/**
+ * 绑定当前生成的进度遮罩。
+ * @returns 遮罩。没有生成时对辅助技术隐藏。
+ */
 function GenerationOverlay() {
   const studio = useStudio();
   const { t } = useTranslation("studio");
@@ -41,20 +51,35 @@ function GenerationOverlay() {
   );
 }
 
+/**
+ * 当前模式的预览或分镜。
+ * @returns 舞台区域。分镜视图交给 `StoryboardTable`。
+ */
 export function Stage() {
   const studio = useStudio();
   const { t } = useTranslation("studio");
+  /** 对比滑块位置，占画板宽度的百分比。 */
   const [split, setSplit] = useState(43);
+  /** 胶片预览里选中的分镜镜头下标。 */
   const [selectedShot, setSelectedShot] = useState(0);
+  /** 对比画板元素。`moveSplit` 用它量指针位置。 */
   const compareRef = useRef<HTMLDivElement>(null);
+  /** 对比手柄从 pointerdown 到 pointerup 之间为 true。 */
   const dragging = useRef(false);
 
+  /** 画幅比例和对比分割用的 CSS 变量。画板样式读取。 */
   const boardStyle = {
     "--ar": studio.ratio.replace(":", " / "),
     "--ratio": String(ratioValue(studio.ratio)),
     "--split": `${split}%`,
   } as CSSProperties;
 
+  /**
+   * 按指针移动对比分割。
+   * `split` 夹紧到 12–88，保证两边都看得见。
+   * @param event - 画板上的指针事件。
+   * @returns 无返回值。没有拖动时不生效。
+   */
   const moveSplit = (event: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current || !compareRef.current) return;
     const rect = compareRef.current.getBoundingClientRect();
@@ -63,6 +88,7 @@ export function Stage() {
   };
 
   const rows = studio.board.rows;
+  /** 选中的行。夹紧下标，避免删镜头后越界。 */
   const shot = rows[Math.min(selectedShot, Math.max(0, rows.length - 1))];
   const total = rows.reduce((sum, row) => sum + Number(row.dur || 0), 0);
   const output = studio.activeOutput?.outputs[0];

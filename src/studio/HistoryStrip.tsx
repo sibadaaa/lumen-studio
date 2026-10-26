@@ -1,8 +1,14 @@
 import { ArrowRight, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useStudio } from "./StudioContext";
+import type { HistoryStripProps } from "./types/components";
 
-export function HistoryStrip({ toast }: { toast: (message: string, type?: "default" | "success") => void }) {
+/**
+ * 提示词栏下方的会话历史。
+ * @param props - `toast` 给「全部作品」和「新建」用，它们只提示、不跳转。
+ * @returns 历史条。选中卡片会恢复对应模式和产物。
+ */
+export function HistoryStrip({ toast }: HistoryStripProps) {
   const studio = useStudio();
   const { t } = useTranslation("studio");
   return (

@@ -5,12 +5,20 @@ import { MOTIONS, SHOT_SIZES } from "../data/mock";
 import { formatTokens } from "../lib/tokens";
 import { useStudio } from "./StudioContext";
 
+/**
+ * 文生视频和图组可编辑的镜头表。
+ * @returns 分镜表。行的修改走 `useStudio`。
+ */
 export function StoryboardTable() {
   const studio = useStudio();
   const { t } = useTranslation("studio");
+  /** 隐藏的文件输入。点击缩略图后为 `pendingRow` 打开它。 */
   const fileRef = useRef<HTMLInputElement>(null);
+  /** 正在等待本地选图的行。没有打开选择器时为 null。 */
   const [pendingRow, setPendingRow] = useState<number | null>(null);
+  /** 当前分镜的行。 */
   const rows = studio.board.rows;
+  /** 各镜头时长之和，显示在表头和表尾。 */
   const total = rows.reduce((sum, row) => sum + Number(row.dur || 0), 0);
 
   return (
@@ -55,6 +63,7 @@ export function StoryboardTable() {
                 <textarea className="board-cell-desc" rows={2} value={row.desc} onChange={(event) => studio.updateBoardRow(index, { desc: event.target.value })} />
                 <input className="board-cell-input" value={row.audio} onChange={(event) => studio.updateBoardRow(index, { audio: event.target.value })} />
                 <div className="board-duration">
+                  {/* `row.dur` 夹紧到 1–8 秒，步进 0.5 秒。 */}
                   <input
                     type="number"
                     min={1}

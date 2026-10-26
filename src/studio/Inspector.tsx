@@ -5,20 +5,22 @@ import { ANIMATION_LABELS, BITRATE_LABELS, MODES, MOTIONS } from "../data/mock";
 import { formatTokens } from "../lib/tokens";
 import type { AnimationMode, Bitrate, Resolution } from "../types";
 import { useStudio } from "./StudioContext";
+import type { InspectorProps } from "./types/components";
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  onOpenAgent: () => void;
-  toast: (message: string, type?: "default" | "success") => void;
-}
-
-export function Inspector({ open, onClose, toast }: Props) {
+/**
+ * 右侧参数抽屉。
+ * @param props - 展开状态、关闭处理、智能体入口，以及尚未接上真实行为的控件所用的提示。
+ * @returns 检查器侧栏。关闭时仍然挂载。
+ */
+export function Inspector({ open, onClose, toast }: InspectorProps) {
   const studio = useStudio();
   const { t } = useTranslation("studio");
   const { t: tBase } = useTranslation("base");
+  /** 宽度草稿。失焦时写入 `customSize`，仓库变化时再写回输入框。 */
   const [widthInput, setWidthInput] = useState(String(studio.customSize.width));
+  /** 高度草稿。提交规则与 `widthInput` 相同。 */
   const [heightInput, setHeightInput] = useState(String(studio.customSize.height));
+  /** 模型菜单是否展开。 */
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -26,16 +28,29 @@ export function Inspector({ open, onClose, toast }: Props) {
     setHeightInput(String(studio.customSize.height));
   }, [studio.customSize.width, studio.customSize.height, studio.mode, studio.resolution]);
 
+  /** 自定义宽高输入是否可编辑。 */
   const isCustom = studio.resolution === "custom";
+  /** 单段时长控件。图像模式和分镜视图隐藏，分镜用每镜时长。 */
   const showDuration = studio.isVideo && !studio.isBoardView;
+  /** 单段文生视频和图生视频的运镜控件。 */
   const showMotion = (studio.mode === "t2v" || studio.mode === "i2v") && !studio.isBoardView;
+  /** 动画风格控件。只有图生视频有。 */
   const showAnimation = studio.mode === "i2v";
+  /** 强度滑块。只有图生图有。 */
   const showStrength = studio.mode === "i2i";
+  /** 图组额外说明。只有图组模式有。 */
   const showMulti = studio.mode === "multi";
+  /** 一键尺寸：宽、高和标签。视频和图像的 1080p 档预设不同。 */
   const presets = studio.isVideo
     ? [[1920, 1080, "1080p"], [3840, 2160, "4K"], [1080, 1920, "竖屏"]] as const
     : [[2048, 1152, "2K"], [3840, 2160, "4K"], [1080, 1920, "竖屏"]] as const;
 
+  /**
+   * 把一边的尺寸草稿写入 `customSize`。
+   * @param axis - "width" 或 "height"。
+   * @param raw - 输入文本。非数字时两边草稿都从仓库恢复。
+   * @returns 无返回值。夹紧发生在 `setCustomSize` 里。
+   */
   const commitDimension = (axis: "width" | "height", raw: string) => {
     const value = Number(raw);
     if (!Number.isFinite(value)) {

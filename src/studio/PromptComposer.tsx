@@ -7,19 +7,34 @@ import { formatTokens } from "../lib/tokens";
 import { AssetPickerDialog } from "../assets/AssetPickerDialog";
 import type { AssetRole } from "../../shared/contracts";
 import { useStudio } from "./StudioContext";
+import type { PromptComposerProps } from "./types/components";
 
-export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => void }) {
+/**
+ * 提示词、附件、token 估算，以及移动端生成按钮。
+ * @param props - 用来打开检查器。生成本身走 `useStudio`。
+ * @returns 提示词栏。
+ */
+export function PromptComposer({ onOpenInspector }: PromptComposerProps) {
   const studio = useStudio();
   const { t } = useTranslation("studio");
   const { t: tBase } = useTranslation("base");
+  /** 隐藏的文件输入。附件按钮点击它。 */
   const fileRef = useRef<HTMLInputElement>(null);
+  /** 素材库选择器是否打开。 */
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** 当前模式的文案和附件规则。 */
   const config = MODES[studio.mode];
+  /** 预计耗时句子。分镜模式用的文案键和单段不同。 */
   const eta = studio.isBoardView
     ? t(studio.mode === "multi" ? "boardEta.multi" : "boardEta.t2v")
     : t(`eta.${studio.mode}`);
+  /** 传给素材库选择器的角色：首帧、镜头或参考图。 */
   const pickerRole: AssetRole = studio.mode === "i2v" ? "first_frame" : studio.mode === "multi" ? "shot" : "reference";
 
+  /**
+   * 往提示词末尾补一句固定的电影感措辞。
+   * @returns 无返回值。提示词里已有「体积光」时不再重复这段。
+   */
   const enhance = () => {
     if (studio.prompt.includes("体积光")) {
       studio.setPrompt(`${studio.prompt}，电影级构图，35mm 胶片颗粒`);
@@ -41,6 +56,7 @@ export function PromptComposer({ onOpenInspector }: { onOpenInspector: () => voi
           <span className="char-count">{studio.prompt.length} / 1000</span>
         </div>
       </div>
+      {/* 提示词最多 1000 个字符。 */}
       <textarea
         id="prompt"
         rows={2}

@@ -16,7 +16,9 @@ import { Inspector } from "./Inspector";
 import { PromptComposer } from "./PromptComposer";
 import { Stage } from "./Stage";
 import { useStudio } from "./StudioContext";
+import type { StudioPageProps } from "./types/components";
 
+/** 每个模式页签用的图标组件。 */
 const MODE_ICONS: Record<Mode, typeof ImageIcon> = {
   t2i: ImageIcon,
   t2v: Film,
@@ -25,24 +27,31 @@ const MODE_ICONS: Record<Mode, typeof ImageIcon> = {
   multi: Clapperboard,
 };
 
-interface Props {
-  hidden: boolean;
-  onOpenAgent: () => void;
-  toast: (message: string, type?: "default" | "success") => void;
-}
-
-export function StudioPage({ hidden, onOpenAgent, toast }: Props) {
+/**
+ * 工作室外壳：模式页签、舞台、提示词栏、历史和检查器抽屉。
+ * @param props - `hidden` 时卸下快捷键；`toast` 传给历史条。
+ * @returns 工作室布局。其他路由显示时仍然挂载。
+ */
+export function StudioPage({ hidden, onOpenAgent, toast }: StudioPageProps) {
   const studio = useStudio();
   const { t } = useTranslation("studio");
+  /** 检查器抽屉是否展开。遮罩和检查器自己都能关掉它。 */
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
+  /** 把当前模式写到 `document.body` 上，给主题 CSS 用。页面隐藏时跳过。 */
   useEffect(() => {
     if (hidden) return;
     document.body.dataset.mode = studio.mode;
   }, [hidden, studio.mode]);
 
+  /** Cmd/Ctrl+Enter 生成。1–5 切换模式，但焦点在输入框里时不切换。`hidden` 时不注册。 */
   useEffect(() => {
     if (hidden || !SHORTCUTS_ENABLED) return;
+    /**
+     * 处理工作室快捷键。
+     * @param event - window 上的 keydown 事件。
+     * @returns 无返回值。
+     */
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const typing = target && ["INPUT", "TEXTAREA"].includes(target.tagName);
